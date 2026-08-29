@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "types": ["node", "react", "react-dom"],
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "outDir": ".test-build"
+  },
+  "include": ["test/**/*.tsx", "test/**/*.ts"],
+  "exclude": ["node_modules", ".test-build"]
+}

@@ -1,0 +1,40 @@
+# Dependency directories and local package-manager data
+node_modules/
+.pnpm-store/
+.pnpm-cache/
+
+# Framework/compiler/test output
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.test-build/
+next-env.d.ts
+
+# Real environment files and credentials; commit placeholders only
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+
+# Logs and local verification output
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.local/
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Deployment metadata
+.vercel/

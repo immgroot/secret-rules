@@ -1,0 +1,33 @@
+{
+  "name": "secret-rules",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.19.0 <25",
+    "pnpm": "11.19.0"
+  },
+  "scripts": {
+    "dev": "pnpm build:shared && pnpm --parallel -r dev",
+    "build:shared": "pnpm --filter @secret-rules/shared build",
+    "build": "pnpm -r build",
+    "start": "pnpm --parallel --filter @secret-rules/web --filter @secret-rules/server start",
+    "typecheck": "pnpm build:shared && pnpm -r typecheck",
+    "lint": "eslint . --max-warnings=0",
+    "test": "pnpm build:shared && pnpm -r --if-present test",
+    "brand:generate": "node scripts/generate-brand-assets.mjs",
+    "rules:inspect": "pnpm --filter @secret-rules/server rules:inspect",
+    "rules:simulate": "pnpm --filter @secret-rules/server rules:simulate"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.3.3",
+    "@types/node": "24.13.3",
+    "eslint": "10.9.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.68.0"
+  }
+}
