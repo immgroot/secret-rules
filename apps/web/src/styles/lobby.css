@@ -4,6 +4,10 @@
 .lobby-shell .site-header nav { gap: 16px; }
 .lobby-back { display: inline-flex; align-items: center; gap: 10px; font: 500 .6875rem/1.5 var(--font-secret), monospace; color: var(--text-secondary); }
 .lobby-heading { display: flex; align-items: center; justify-content: space-between; gap: 32px; padding-block: 50px 36px; }
+.match-abandoned-notice { display: flex; align-items: flex-start; gap: 14px; margin-top: 34px; padding: 18px 20px; border: 1px solid #e9b45d72; border-radius: var(--radius-lg); color: #e9b45d; background: linear-gradient(110deg, #21190d, #10130e); box-shadow: 0 18px 36px #0005, inset 0 1px #ffffff0b; }
+.match-abandoned-notice h2 { margin: 3px 0 5px; color: var(--text); font: 800 clamp(1.65rem, 3vw, 2.6rem)/.9 var(--font-display), sans-serif; letter-spacing: .01em; }
+.match-abandoned-notice p:last-child { max-width: 680px; margin: 0; color: var(--text-secondary); font-size: .8rem; line-height: 1.5; }
+.match-abandoned-notice .eyebrow { margin: 0; color: #e9b45d; }
 .lobby-heading > div:first-child { max-width: 620px; min-width: 0; }
 .lobby-heading .eyebrow { color: var(--accent); font-size: .625rem; }
 .lobby-heading > div > p:last-child { color: var(--text-secondary); font-size: .875rem; margin-bottom: 0; }

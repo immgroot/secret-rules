@@ -93,3 +93,17 @@ Secret progress, Inspect records and pending choice. Its independent `revision`
 lets the browser discard stale deliveries. Reconnect authorization replaces the
 old socket and sends a fresh public snapshot plus that player's current private
 projection. Secret completion becomes visible only at round reveal.
+
+## Match abandonment
+
+Reconnect reservations remain members for the configured grace period, so a
+brief network interruption keeps the same identity, hand, Secret, private
+knowledge, and current round. Turn deadlines still advance on the server; a
+disconnected player is never auto-played and receives no artificial score.
+
+After explicit leaves or reconnect expiry, fewer than two active players cannot
+continue an active match. The server abandons it, clears every round/private and
+match-score structure, returns connected survivors to the lobby, and broadcasts
+`NOT ENOUGH PLAYERS REMAIN.` This path cannot resolve a round, declare a winner,
+complete a Secret, or award challenge/target/Secret points. Empty rooms are
+destroyed normally.

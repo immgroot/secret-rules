@@ -1,40 +1,81 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { useSound } from "../../preferences/provider.tsx";
 import { GameButton, GameModal, SecretCard } from "../ui/index.ts";
 import { GameIcon } from "../icons/game-icon.tsx";
 import { tutorialReducer, type TutorialStep } from "./interaction-state.ts";
 
-const steps = [
-  { title: "GET YOUR CARDS", text: "Everyone starts with 5 private cards.", visual: "5 PRIVATE CARDS" },
-  { title: "GET YOUR SECRET", text: "Only you can see it. Completion stays hidden until reveal.", visual: "YOUR EYES ONLY" },
-  { title: "PLAY A CARD", text: "Choose the real card privately and place it face-down.", visual: "REAL CARD · -2" },
-  { title: "MAKE YOUR CLAIM", text: "Tell the truth or claim any other card identity.", visual: "I PLAYED +2" },
-  { title: "TRUST OR CALL BLUFF", text: "Everyone else gets one short chance to challenge.", visual: "CALL BLUFF" },
-  { title: "RESOLVE", text: "A caught bluff is cancelled. A truthful challenged card still resolves.", visual: "ACTUAL -2 · CLAIM +2" },
-  { title: "HIT THE TARGET", text: "Move the Button to the exact number. Overshoots do nothing.", visual: "28 / 30" },
-  { title: "REVEAL", text: "Secrets, points, and standings appear at round end.", visual: "SECRET +3" },
+export const tutorialSteps = [
+  { title: "GET YOUR CARDS", text: "Everyone starts with five private cards. The other players never receive your hand." },
+  { title: "GET YOUR SECRET", text: "Your private objective changes how you play. Progress stays hidden until the round reveal." },
+  { title: "PLAY A REAL CARD", text: "Choose one card from your hand. It goes face-down, so only the server and you know what it is." },
+  { title: "MAKE YOUR CLAIM", text: "Publicly name any valid card. It can match your real card—or be a complete bluff." },
+  { title: "TRUST OR CALL BLUFF", text: "The first opponent to challenge gets the call. If nobody challenges before time runs out, the table trusts you." },
+  { title: "CHALLENGE RESULT", text: "A caught bluff is cancelled. A truthful card still resolves when someone accuses you." },
+  { title: "USE THE CARDS", text: "Number cards move the Button. Six special cards can redirect the whole table." },
+  { title: "HIT THE TARGET", text: "Reach the exact target to secure it. An overshoot leaves the Button where it was." },
+  { title: "END OR CONTINUE", text: "Players vote privately after the target. One Last Chance can happen before the round ends." },
+  { title: "REVEAL YOUR SECRET", text: "Completed Secrets earn bonus points, then the round standings appear. Highest match score wins." },
 ] as const;
 
-function TutorialVisual({ step }: { step: TutorialStep }) {
-  if (step === 0) return <div className="tutorial-card-fan" aria-label="Five private cards">{["+1", "SKIP", "-2", "WILD", "+3"].map((card) => <i key={card}>{card}</i>)}</div>;
-  if (step === 1) return <SecretCard rule="BLUFF WITH A NEGATIVE CARD." ownerLabel="YOU / PUBLIC EXAMPLE" example />;
-  if (step === 2 || step === 3) return <div className="tutorial-facedown"><i>{step === 2 ? "-2" : "?"}</i><strong>{steps[step].visual}</strong></div>;
-  if (step === 4) return <div className="tutorial-bluff-button">CALL BLUFF</div>;
-  if (step === 5) return <div className="tutorial-comparison"><span>ACTUAL <b>-2</b></span><span>CLAIM <b>+2</b></span><strong>BLUFF CAUGHT</strong></div>;
-  if (step === 6) return <div className="tutorial-counter"><strong>28</strong><span>EXACT TARGET 30</span></div>;
-  return <div className="tutorial-reward"><GameIcon name="secret" size={32} /><strong>SECRET COMPLETED</strong><span>+3 POINTS</span></div>;
+const hand = ["+1", "SKIP", "-2", "WILD", "+3"] as const;
+const claims = ["+1", "+2", "+3", "-1", "-2", "SKIP", "STEAL", "INSPECT", "REVERSE", "SHIELD", "WILD"] as const;
+const effects = [
+  ["SKIP", "Target misses their next turn"],
+  ["STEAL", "Take one random card from a target"],
+  ["INSPECT", "Privately see one random target card"],
+  ["REVERSE", "Reverse the turn direction"],
+  ["SHIELD", "Block the next hostile targeted effect"],
+  ["WILD", "Privately choose +1, +2, -1, or -2"],
+] as const;
+
+function TutorialTable({ children }: { children: ReactNode }) {
+  return <div className="tutorial-pov" aria-label="Example table from your point of view">
+    <span className="tutorial-pov__player tutorial-pov__player--top">ALEX</span>
+    <span className="tutorial-pov__player tutorial-pov__player--left">SAM</span>
+    <span className="tutorial-pov__player tutorial-pov__player--right">NIDA</span>
+    <span className="tutorial-pov__player tutorial-pov__player--you">YOU · FRONT</span>
+    <div className="tutorial-pov__center">{children}</div>
+  </div>;
+}
+
+function TutorialVisual({ step, realCard, claim, chooseReal, chooseClaim }: {
+  step: TutorialStep;
+  realCard: string | null;
+  claim: string | null;
+  chooseReal: (card: string) => void;
+  chooseClaim: (card: string) => void;
+}) {
+  if (step === 0) return <TutorialTable><div className="tutorial-card-fan" aria-label="Your five private cards">{hand.map((card) => <i key={card}>{card}</i>)}</div><strong className="tutorial-cue">PRIVATE HAND · ONLY YOU SEE THIS</strong></TutorialTable>;
+  if (step === 1) return <TutorialTable><SecretCard rule="SUCCESSFULLY BLUFF 3 TIMES." ownerLabel="YOU / PUBLIC EXAMPLE" example /><strong className="tutorial-cue">PRIVATE SECRET · +3 OR +5</strong></TutorialTable>;
+  if (step === 2) return <TutorialTable><div className="tutorial-choice"><strong>CHOOSE YOUR REAL CARD</strong><div>{hand.map((card) => <button type="button" key={card} aria-pressed={realCard === card} onClick={() => chooseReal(card)}>{card}</button>)}</div><small>{realCard === "-2" ? "-2 SELECTED · READY" : "SELECT -2 TO CONTINUE"}</small></div></TutorialTable>;
+  if (step === 3) return <TutorialTable><div className="tutorial-claim-builder"><div className="tutorial-facedown"><i>?</i><strong>REAL CARD · {realCard ?? "-2"}</strong></div><div className="tutorial-choice tutorial-choice--claims"><strong>MAKE A PUBLIC CLAIM</strong><div>{claims.map((card) => <button type="button" key={card} aria-pressed={claim === card} onClick={() => chooseClaim(card)}>{card}</button>)}</div><small>{claim === "+2" ? "+2 CLAIMED · THAT IS A BLUFF" : "CLAIM +2 TO CONTINUE"}</small></div></div></TutorialTable>;
+  if (step === 4) return <TutorialTable><div className="tutorial-facedown tutorial-facedown--challenge"><i>?</i><strong>YOU CLAIM +2</strong></div><div className="tutorial-bluff-button">NIDA CALLS BLUFF</div><p className="tutorial-timer"><GameIcon name="timer" size={14} /> FIRST CHALLENGER WINS · SILENCE MEANS TRUST</p></TutorialTable>;
+  if (step === 5) return <TutorialTable><div className="tutorial-comparison"><span>ACTUAL <b>-2</b></span><span>CLAIM <b>+2</b></span><strong>BLUFF CAUGHT</strong><small>NIDA +1 · YOU -1 · EXTRA CARD DISCARDED</small></div><p className="tutorial-fine-print">If the card had been truthful: accuser -1, player +1, and the card would resolve. Scores never fall below 0.</p></TutorialTable>;
+  if (step === 6) return <TutorialTable><div className="tutorial-card-guide"><div className="tutorial-number-guide"><b>+1</b><b>+2</b><b>+3</b><b>-1</b><b>-2</b><span>MOVE THE BUTTON</span></div><ul>{effects.map(([card, text]) => <li key={card}><b>{card}</b><span>{text}</span></li>)}</ul><small>Every special card also moves the Button +1.</small></div></TutorialTable>;
+  if (step === 7) return <TutorialTable><div className="tutorial-target"><div className="tutorial-counter"><strong>28</strong><span>TARGET 30</span></div><span className="tutorial-target__move">PLAY +2 → <b>30</b> · SECURED</span><span className="tutorial-target__overshoot">PLAY +3 → 31 · STAYS AT 28</span></div></TutorialTable>;
+  if (step === 8) return <TutorialTable><div className="tutorial-vote"><strong>TARGET SECURED</strong><p>PRIVATE VOTE</p><div><span>END ROUND</span><span>CONTINUE PLAYING</span></div><small>If the vote continues, the table gets exactly one Last Chance Rotation.</small><em>YOUR SECRET PROGRESS · 3 / 3 · STILL PRIVATE</em></div></TutorialTable>;
+  return <TutorialTable><div className="tutorial-final"><SecretCard rule="SUCCESSFULLY BLUFF 3 TIMES." ownerLabel="YOU / REVEALED" tone="green" example /><div className="tutorial-reward"><GameIcon name="secret" size={26} /><strong>SECRET COMPLETED</strong><span>STANDARD +3</span><em>HARD SECRET +5</em><small>YOU 7 · NIDA 5 · ALEX 3 · SAM 2</small></div></div></TutorialTable>;
 }
 
 export function HowToPlay({ onClose, onRoomAction }: { onClose: () => void; onRoomAction: (mode: "create" | "join") => void }) {
   const [step, dispatch] = useReducer(tutorialReducer, 0);
+  const [realCard, setRealCard] = useState<string | null>(null);
+  const [claim, setClaim] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const sound = useSound();
+  const canContinue = step !== 2 || realCard === "-2" ? step !== 3 || claim === "+2" : false;
   useEffect(() => { heading.current?.focus(); }, [step]);
   function move(action: "next" | "back") { sound.play("cardSlide"); dispatch(action); }
-  return <GameModal open onClose={onClose} title="HOW TO PLAY" className="tutorial-modal tutorial-modal--v2"><div className="tutorial-progress"><p className="eyebrow" role="status">STEP 0{step + 1} / 08</p><ol aria-label="Tutorial progress">{steps.map((item, index) => <li key={item.title} aria-current={index === step ? "step" : undefined}><span className="sr-only">Step {index + 1}: {item.title}</span></li>)}</ol></div>
-    <h3 ref={heading} tabIndex={-1} className="tutorial-title">0{step + 1} — {steps[step].title}</h3><p className="tutorial-v2-copy">{steps[step].text}</p><div className={`tutorial-stage tutorial-stage--${step}`} key={step}><TutorialVisual step={step} /></div><p className="tutorial-disclaimer"><GameIcon name="secret" size={13} /> All visuals are public examples. Real hands and Secrets go only to their owners.</p>
-    <div className="tutorial-actions"><GameButton variant="ghost" size="small" disabled={step === 0} onClick={() => move("back")}><GameIcon className="icon-back" name="arrow" size={16} /> BACK</GameButton>{step < 7 ? <GameButton onClick={() => move("next")}>NEXT<GameIcon name="arrow" size={18} /></GameButton> : <div className="tutorial-room-actions"><GameButton size="small" onClick={() => onRoomAction("create")}>CREATE ROOM</GameButton><GameButton variant="secondary" size="small" onClick={() => onRoomAction("join")}>JOIN ROOM</GameButton></div>}</div>
+  function restart() { sound.play("cardSlide"); setRealCard(null); setClaim(null); dispatch("reset"); }
+  return <GameModal open onClose={onClose} title="HOW TO PLAY" className="tutorial-modal tutorial-modal--v2">
+    <div className="tutorial-progress"><p className="eyebrow" role="status">STEP {String(step + 1).padStart(2, "0")} / 10</p><ol aria-label="Tutorial progress">{tutorialSteps.map((item, index) => <li key={item.title} aria-current={index === step ? "step" : undefined}><span className="sr-only">Step {index + 1}: {item.title}</span></li>)}</ol></div>
+    <h3 ref={heading} tabIndex={-1} className="tutorial-title">{String(step + 1).padStart(2, "0")} — {tutorialSteps[step].title}</h3>
+    <p className="tutorial-v2-copy">{tutorialSteps[step].text}</p>
+    <div className={`tutorial-stage tutorial-stage--${step}`} key={step}><TutorialVisual step={step} realCard={realCard} claim={claim} chooseReal={(card) => { sound.play("cardSlide"); setRealCard(card); }} chooseClaim={(card) => { sound.play("uiClick"); setClaim(card); }} /></div>
+    <p className="tutorial-disclaimer"><GameIcon name="secret" size={13} /> Guided public example. Real hands, choices, progress, and Secrets go only to their authorized player.</p>
+    <div className="tutorial-secondary-actions"><GameButton variant="ghost" size="small" onClick={restart}><GameIcon name="reconnect" size={14} /> RESTART</GameButton><GameButton variant="ghost" size="small" onClick={onClose}>SKIP TUTORIAL</GameButton></div>
+    <div className="tutorial-actions"><GameButton variant="ghost" size="small" disabled={step === 0} onClick={() => move("back")}><GameIcon className="icon-back" name="arrow" size={16} /> BACK</GameButton>{step < 9 ? <GameButton disabled={!canContinue} onClick={() => move("next")}>NEXT<GameIcon name="arrow" size={18} /></GameButton> : <div className="tutorial-room-actions"><GameButton size="small" onClick={() => onRoomAction("create")}>CREATE ROOM</GameButton><GameButton variant="secondary" size="small" onClick={() => onRoomAction("join")}>JOIN ROOM</GameButton></div>}</div>
   </GameModal>;
 }

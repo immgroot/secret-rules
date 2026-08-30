@@ -1,6 +1,6 @@
 # Multiplayer Protocol
 
-Protocol version 8 uses Socket.IO transport with strict Zod payload validation.
+Protocol version 9 uses Socket.IO transport with strict Zod payload validation.
 The server accepts intentions only; payload validation never replaces membership,
 identity, phase, ownership, deadline and rate-limit authorization.
 
@@ -63,6 +63,15 @@ recorded in the current server round so turn order, acknowledgement, pending
 choice, target vote and Last Chance cannot deadlock. A departing penalty/Wild
 choice receives a server fallback only after membership is permanently removed;
 temporary disconnect remains recoverable through the original private choice.
+
+If permanent leaves or expired reconnect reservations reduce an active match to
+fewer than two active players, `RoomOwner` abandons the match before another
+timer transition can score it. Abandonment clears the round, hands, Secrets,
+Inspect knowledge, match scores and rule history, sends null private deliveries
+to connected survivors, resets ready/AFK state, and returns the room to the
+lobby with the public `match_abandoned` notice. It never creates a winner or
+awards challenge, target, or Secret points. Empty rooms still follow the normal
+destruction and idle cleanup paths.
 
 Return to lobby preserves code, members, host, settings and chat. It clears
 scores, rounds, deck/discard, hands, Secrets, Inspect knowledge, effects, votes,

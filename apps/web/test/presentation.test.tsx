@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { GameButton, GameTimer, PlayerBadge, ScoreBadge, SecretCard, ConnectionIndicator, RoomCode, GameToast } from "../src/components/ui/index.ts";
@@ -7,6 +8,9 @@ import { FullLogo, LogoMark } from "../src/components/brand/logo.tsx";
 import { formatRemainingTime } from "../src/components/ui/presentation.ts";
 import { HomePage } from "../src/components/home/homepage.tsx";
 import { AppProviders } from "../src/app/providers.tsx";
+import { projectVisualSeats } from "../src/components/game/seat-projection.ts";
+import { tutorialSteps } from "../src/components/home/how-to-play.tsx";
+import type { PublicPlayer } from "@secret-rules/shared";
 
 test("timer formats supplied server timestamps without owning a clock or resolving a round", () => {
   assert.equal(formatRemainingTime(90_000, 30_000), "01:00");
@@ -67,24 +71,117 @@ test("room code is display-only and toast supports accessible persistent feedbac
   assert.match(toast, /Dismiss notification/);
 });
 
-test("homepage presents isolated Button V2 teaching, full rules entry, and a graceful missing-video poster", () => {
+test("homepage clearly presents online Button V2 play, full rules entry, and an intentional video fallback", () => {
   const html = renderToStaticMarkup(<AppProviders><HomePage /></AppProviders>);
   assert.match(html, /Public examples\. Real rules stay private\./);
-  assert.match(html, /LOCAL DEMO · NO MULTIPLAYER/);
-  assert.match(html, /The Button V2 isolated local demo/);
+  assert.match(html, /4–10 player online bluffing game/i);
+  assert.match(html, /4–10 PLAYERS ONLINE/);
+  assert.match(html, /PRIVATE ROOMS · NO DOWNLOAD/);
+  assert.match(html, /QUICK GAMEPLAY PREVIEW/);
+  assert.match(html, /The Button V2 interactive gameplay preview/);
   assert.match(html, /PLAY THE EXAMPLE/);
   assert.match(html, /SAME GAME\. DIFFERENT RULES\./);
-  assert.match(html, /PLAY HIDDEN CARDS/);
-  assert.match(html, /CLAIM ANYTHING/);
-  assert.match(html, /CALL THEIR BLUFF/);
-  assert.match(html, /FOLLOW YOUR SECRET RULE/);
-  assert.match(html, /PLAY DEMO/);
-  assert.match(html, /THE BUTTON V2 IS LIVE\. BRING 4–10 FRIENDS/);
+  for (const rule of ["GET DEALT", "PLAY &amp; CLAIM", "TRUST OR CHALLENGE", "MOVE THE TABLE", "REVEAL &amp; SCORE"]) assert.match(html, new RegExp(rule));
+  assert.match(html, /PLAY PREVIEW/);
+  assert.match(html, /GET 4–10 FRIENDS\. SHARE THE CODE\. TRUST NOBODY/);
+  assert.match(html, />CREATE ROOM</);
+  assert.match(html, />JOIN ROOM</);
   assert.match(html, /SEE IT IN ACTION/);
-  assert.match(html, /HOW TO PLAY VIDEO/);
-  assert.match(html, /COMING SOON/);
+  assert.match(html, /WATCH HOW A ROUND WORKS/);
+  assert.match(html, /60–90 SECOND VIDEO · COMING SOON/);
+  assert.match(html, /OPEN INTERACTIVE TUTORIAL/);
   assert.match(html, /\/videos\/how-to-play\.mp4/);
+  assert.match(html, /\/videos\/how-to-play\.vtt/);
   assert.match(html, /kind="captions"/);
+  assert.doesNotMatch(html, /NO MULTIPLAYER/i);
   assert.ok(!html.includes("<form"));
   assert.ok(!html.includes("<iframe"));
+});
+
+function examplePlayers(count: number): PublicPlayer[] {
+  return Array.from({ length: count }, (_, index) => ({
+    playerId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    displayName: `Player ${index + 1}`,
+    avatarId: "lime",
+    playerColor: ["lime", "violet", "coral", "blue"][index % 4] as PublicPlayer["playerColor"],
+    role: "player",
+    afk: false,
+    ready: true,
+    connected: true,
+    isHost: index === 0,
+    joinedAt: index,
+  }));
+}
+
+test("POV seat projection places every player at the front without mutating authoritative identity or order", () => {
+  for (let count = 4; count <= 10; count++) {
+    const players = examplePlayers(count);
+    const authoritativeIds = players.map((player) => player.playerId);
+    for (const viewer of players) {
+      const projection = projectVisualSeats(players, viewer.playerId);
+      assert.equal(projection.orientation, "player");
+      assert.deepEqual(projection.logicalPlayerIds, authoritativeIds);
+      assert.equal(projection.seats[0]?.player, viewer, "the original player object remains the action target");
+      assert.equal(projection.seats[0]?.local, true);
+      assert.equal(projection.seats[0]?.position, "front");
+      assert.equal(Math.abs(projection.seats[0]?.angle ?? 0), 180);
+      assert.equal(new Set(projection.seats.map((seat) => seat.player.playerId)).size, count);
+      assert.equal(new Set(projection.seats.map((seat) => seat.angle)).size, count);
+    }
+    assert.deepEqual(players.map((player) => player.playerId), authoritativeIds);
+  }
+});
+
+test("spectators keep a neutral projection and stable player POV survives socket replacement", () => {
+  const players = examplePlayers(6);
+  const neutral = projectVisualSeats(players, "00000000-0000-4000-8000-999999999999");
+  assert.equal(neutral.orientation, "spectator");
+  assert.equal(neutral.seats.some((seat) => seat.local), false);
+  assert.deepEqual(neutral.seats.map((seat) => seat.player.playerId), players.map((player) => player.playerId));
+
+  const playerId = players[4]!.playerId;
+  const beforeReconnect = projectVisualSeats(players, playerId);
+  const afterReconnect = projectVisualSeats(players.map((player) => ({ ...player, connected: true })), playerId);
+  assert.equal(beforeReconnect.seats[0]?.player.playerId, playerId);
+  assert.equal(afterReconnect.seats[0]?.player.playerId, playerId);
+  assert.deepEqual(afterReconnect.seats.map((seat) => seat.player.playerId), beforeReconnect.seats.map((seat) => seat.player.playerId));
+});
+
+test("POV rotation cannot change authoritative turns, direction, skips, challenges, or targeted player IDs", () => {
+  const players = examplePlayers(4);
+  const facts = Object.freeze({
+    logicalOrder: players.map((player) => player.playerId),
+    currentPlayerId: players[1]!.playerId,
+    direction: "counter_clockwise" as const,
+    skippedPlayerId: players[2]!.playerId,
+    targetedPlayerId: players[3]!.playerId,
+    challengerPlayerId: players[0]!.playerId,
+  });
+  for (const viewer of players) {
+    const projection = projectVisualSeats(players, viewer.playerId);
+    assert.deepEqual(projection.logicalPlayerIds, facts.logicalOrder);
+    assert.equal(projection.seats.find((seat) => seat.player.playerId === facts.currentPlayerId)?.player, players[1]);
+    assert.equal(projection.seats.find((seat) => seat.player.playerId === facts.skippedPlayerId)?.player.playerId, facts.skippedPlayerId);
+    assert.equal(projection.seats.find((seat) => seat.player.playerId === facts.targetedPlayerId)?.player.playerId, facts.targetedPlayerId);
+    assert.equal(projection.seats.find((seat) => seat.player.playerId === facts.challengerPlayerId)?.player.playerId, facts.challengerPlayerId);
+    assert.equal(facts.direction, "counter_clockwise", "direction remains a server fact, not a CSS seat order");
+  }
+});
+
+test("the guided tutorial covers the complete Button V2 round in ten ordered steps", () => {
+  assert.deepEqual(tutorialSteps.map((step) => step.title), [
+    "GET YOUR CARDS", "GET YOUR SECRET", "PLAY A REAL CARD", "MAKE YOUR CLAIM", "TRUST OR CALL BLUFF",
+    "CHALLENGE RESULT", "USE THE CARDS", "HIT THE TARGET", "END OR CONTINUE", "REVEAL YOUR SECRET",
+  ]);
+  const source = readFileSync(new URL("../../src/components/home/how-to-play.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /useMultiplayer|RoomOwner|\.playCard\(|\.callBluff\(/);
+  assert.match(source, /Guided public example/);
+});
+
+test("the planned tutorial video has a real timed caption track without a placeholder binary", () => {
+  const captions = readFileSync(new URL("../../public/videos/how-to-play.vtt", import.meta.url), "utf8");
+  assert.match(captions, /^WEBVTT/);
+  assert.equal((captions.match(/-->/g) ?? []).length, 13);
+  assert.match(captions, /00:68\.000 --> 00:75\.000/);
+  assert.match(captions, /Score the most points to win/);
 });

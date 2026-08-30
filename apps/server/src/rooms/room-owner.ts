@@ -84,6 +84,7 @@ export function publicSnapshot(room: RoomState): PublicRoomSnapshot {
     roomName: room.roomName, visibility: room.visibility, locked: room.locked,
     passwordRequired: room.passwordDigest !== null,
     publicRound: room.publicRound,
+    roomNotice: room.roomNotice,
     chatMessages: room.chatMessages.map((message) => ({
       messageId: message.messageId, authorId: message.authorId, displayName: message.displayName,
       avatarId: message.avatarId, playerColor: message.playerColor, role: message.role,
@@ -220,6 +221,7 @@ export class RoomOwner {
       lastActivityAt: this.now(), stateVersion: 0,
       roomName: input.roomName ?? "SECRET ROOM", visibility: "private", locked: false,
       passwordDigest: null, securityVersion: 0, chatMessages: [], publicRound: null, reports: [], removedSessions: new Map(),
+      roomNotice: null,
       serverRound: null, ruleHistory: new Map(), matchScores: new Map(), nextRoundNumber: 1,
     };
     const session = this.add(room, socketId, input);
@@ -546,6 +548,7 @@ export class RoomOwner {
     const active = [...room.players.values()].filter((candidate) => candidate.role === "player");
     if (active.length < 4 || active.length > 10) throw new LobbyError("NOT_READY");
     const preparedAt = this.now();
+    room.roomNotice = null;
     const seed = this.roundSeed(room.roomId, room.nextRoundNumber);
     const deckSize = effectiveDeckSize(room.settings.buttonDeckPreset, active.length, room.settings.buttonCustomDeckSize);
     if (deckSize < minimumCustomDeckSize(active.length)) throw new LobbyError("SETTINGS_CONFLICT");
@@ -1006,6 +1009,7 @@ export class RoomOwner {
       room.publicRound = null;
       room.status = "lobby";
       room.nextRoundNumber = 1;
+      room.roomNotice = null;
       room.matchScores.clear();
       room.ruleHistory.clear();
       for (const member of room.players.values()) { member.ready = false; member.afk = false; }
@@ -1144,10 +1148,28 @@ export class RoomOwner {
   leave(socketId: string, roomId: string) {
     const { room, player } = this.member(socketId, roomId);
     this.bindings.delete(socketId);
-    if (player.role === "player") this.handleRoundDeparture(room, player.playerId);
     room.players.delete(player.playerId);
+    if (player.role === "player") {
+      if (this.shouldAbandonMatch(room)) this.abandonMatch(room);
+      else this.handleRoundDeparture(room, player.playerId);
+    }
     this.finishRemoval(room);
     return { ok: true as const };
+  }
+  private shouldAbandonMatch(room: RoomState) {
+    return room.status === "in_game" && this.activeCount(room) < 2;
+  }
+  private abandonMatch(room: RoomState) {
+    if (room.status !== "in_game") return;
+    this.clearPrivateDeliveries(room);
+    room.serverRound = null;
+    room.publicRound = null;
+    room.status = "lobby";
+    room.nextRoundNumber = 1;
+    room.matchScores.clear();
+    room.ruleHistory.clear();
+    room.roomNotice = { kind: "match_abandoned", message: "NOT ENOUGH PLAYERS REMAIN.", createdAt: this.now() };
+    for (const member of room.players.values()) { member.ready = false; member.afk = false; }
   }
   private finishRemoval(room: RoomState) {
     if (room.players.size === 0) { this.destroy(room); return; }
@@ -1176,12 +1198,12 @@ export class RoomOwner {
     const now = this.now();
     for (const room of this.rooms.values()) {
       if (now - room.lastActivityAt >= this.idleMs) { this.destroy(room); continue; }
-      const roundChanged = this.advanceRound(room);
       let removed = false;
       let presenceChanged = false;
+      const departedActivePlayerIds: string[] = [];
       for (const player of room.players.values()) {
         if (!player.connected && player.disconnectedUntil !== null && player.disconnectedUntil <= now) {
-          if (player.role === "player") this.handleRoundDeparture(room, player.playerId);
+          if (player.role === "player") departedActivePlayerIds.push(player.playerId);
           room.players.delete(player.playerId);
           removed = true;
         }
@@ -1191,8 +1213,15 @@ export class RoomOwner {
         }
       }
       for (const [id, entry] of room.removedSessions) if (entry.until <= now) room.removedSessions.delete(id);
-      if (removed) this.finishRemoval(room);
-      else if (presenceChanged || roundChanged) this.commit(room, false);
+      if (removed) {
+        if (this.shouldAbandonMatch(room)) this.abandonMatch(room);
+        else for (const playerId of departedActivePlayerIds) this.handleRoundDeparture(room, playerId);
+        this.finishRemoval(room);
+      }
+      else {
+        const roundChanged = this.advanceRound(room);
+        if (presenceChanged || roundChanged) this.commit(room, false);
+      }
     }
   }
   dispose() { this.bindings.clear(); this.codes.clear(); this.rooms.clear(); }

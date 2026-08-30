@@ -70,9 +70,9 @@ test("reset works from every demo stage and scheduled work can be cancelled", ()
 test("tutorial next/back are bounded and reopening resets to step one", () => {
   let step: TutorialStep = 0;
   assert.equal(tutorialReducer(step, "back"), 0);
-  for (let i = 0; i < 8; i++) step = tutorialReducer(step, "next");
-  assert.equal(step, 7);
-  assert.equal(tutorialReducer(step, "back"), 6);
+  for (let i = 0; i < 12; i++) step = tutorialReducer(step, "next");
+  assert.equal(step, 9);
+  assert.equal(tutorialReducer(step, "back"), 8);
   assert.equal(tutorialReducer(step, "reset"), 0);
 });
 

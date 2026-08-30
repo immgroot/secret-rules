@@ -24,8 +24,8 @@ export function ButtonDemo() {
     if (state.stage === "secret") sound.play("secretReveal");
     return scheduleDemoStep(state, dispatch, scheduler);
   }, [state, sound]);
-  return <GameCard className="button-preview local-demo local-demo--v2" aria-label="The Button V2 isolated local demo" data-demo-stage={state.stage}>
-    <div className="preview-toolbar"><span className="eyebrow">LOCAL DEMO</span><span className="demo-duration"><GameIcon name="timer" size={14} /> 8 SEC · SCRIPTED</span></div>
+  return <GameCard className="button-preview local-demo local-demo--v2" aria-label="The Button V2 interactive gameplay preview" data-demo-stage={state.stage}>
+    <div className="preview-toolbar"><span className="eyebrow">INTERACTIVE PREVIEW</span><span className="demo-duration"><GameIcon name="timer" size={14} /> 8 SEC · SCRIPTED</span></div>
     <div className="preview-objective"><p>BUTTON V2</p><h3>PLAY HIDDEN. <span>CLAIM ANYTHING.</span></h3></div>
     <div className="v2-demo-table">
       <span className="v2-demo-player v2-demo-player--you"><PlayerBadge name="YOU" tone="lime" compact reaction={state.stage === "claim" ? "press" : "idle"} /></span>
@@ -36,6 +36,6 @@ export function ButtonDemo() {
       <div className="v2-demo-score"><span>LIV <b>{["score", "secret", "complete"].includes(state.stage) ? "+1" : "0"}</b></span><span>YOU <b>{["score", "secret", "complete"].includes(state.stage) ? "-1" : "0"}</b></span></div>
     </div>
     <div className="demo-story" role="status" aria-live="polite" aria-atomic="true">{revealSecret ? <><SecretCard className="demo-secret" rule="BLUFF WITH A NEGATIVE CARD." ownerLabel="YOUR SECRET · PUBLIC EXAMPLE" tone="green" example /><p className="demo-punchline">{frame.message}</p></> : <div className="demo-beat"><p className="eyebrow">{state.stage === "idle" ? "FACE-DOWN CARD READY" : "THE TABLE IS WATCHING"}</p><p className="demo-status">{frame.message}</p><span>{state.stage === "idle" ? "Start a short scripted example." : "No real room or player data is used."}</span></div>}</div>
-    <div className="demo-footer"><span><GameIcon name="rule" size={13} /> Public example · no multiplayer</span>{state.stage === "idle" ? <GameButton size="small" onClick={() => { sound.unlock(); dispatch({ type: "press" }); }}>PLAY DEMO</GameButton> : <GameButton variant="ghost" size="small" onClick={() => { sound.stop(); dispatch({ type: "reset" }); }}><GameIcon name="reconnect" size={14} /> RESET</GameButton>}</div>
+    <div className="demo-footer"><span><GameIcon name="rule" size={13} /> Public example · real rooms stay synchronized</span>{state.stage === "idle" ? <GameButton size="small" onClick={() => { sound.unlock(); dispatch({ type: "press" }); }}>PLAY PREVIEW</GameButton> : <GameButton variant="ghost" size="small" onClick={() => { sound.stop(); dispatch({ type: "reset" }); }}><GameIcon name="reconnect" size={14} /> RESET</GameButton>}</div>
   </GameCard>;
 }

@@ -10,6 +10,8 @@ for 4–10 players, not a dashboard or SaaS application.
 - The current authorized phase is Button V2. Preserve the existing room, lobby,
   reconnect, social, security, Secret Rule Engine, match-completion and privacy
   systems while maintaining the server-authoritative hidden-card bluffing game.
+  The current polish pass also owns match abandonment below two active players,
+  client-only point-of-view seating, and accurate homepage/tutorial teaching.
 - Button V2 deals five private cards, accepts a public claimed identity, gives
   eligible opponents one server-timed challenge window, resolves the real card,
   owns penalties/scores/target voting and runs at most one Last Chance rotation.
@@ -123,6 +125,7 @@ for 4–10 players, not a dashboard or SaaS application.
 - `docs/PHASE_1.md`: current rooms/lobby handoff, verification and four-window testing.
 - `docs/SECRET_RULE_ENGINE.md`: shared rule generation, privacy and evaluator architecture.
 - `docs/BUTTON_GAME.md`: current Button V2 cards, challenge lifecycle, timers and privacy behavior.
+- `docs/HOW_TO_PLAY_VIDEO.md`: production blueprint and privacy rules for the planned tutorial video.
 - `docs/SCORING.md`: match-local point configuration, reveal timing, ties and reset.
 - `docs/BUTTON_MAYHEM.md`: retired mode note; it is not a playable or reserved Button V2 system.
 - `docs/ROADMAP.md`: explicitly gated future phases.

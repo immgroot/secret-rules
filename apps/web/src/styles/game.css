@@ -730,11 +730,15 @@
 .game-shell--v2 .game-table { min-height: calc(100svh - 300px); margin-top: 30px; }
 .game-shell--v2 .game-table__object { width: min(68vw, 980px); }
 .game-shell--v2 .player-seats {
-  --seat-radius: min(34vh, 300px) !important;
+  --seat-radius: min(35vh, 310px) !important;
   z-index: 12;
   transform: scaleX(1.64);
 }
+.game-shell--v2 .player-seats__others,
+.game-shell--v2 .player-seats__local { display: contents; }
 .game-shell--v2 .player-seat { transform: rotate(var(--seat-angle)) translateY(calc(-1 * var(--seat-radius))) rotate(var(--seat-angle-inverse)) scaleX(.61) translateX(-50%); }
+.game-shell--v2 .player-seat[data-local="true"] .player-avatar { box-shadow: 0 0 0 3px var(--player-color), 0 0 0 8px #d4f4621f, 0 14px 26px #000d; }
+.game-shell--v2 .player-seat[data-local="true"] .player-seat__state { color: var(--accent); border-color: #d4f46255; }
 .game-shell--v2 .player-seat[data-active="true"] .player-avatar { box-shadow: 0 0 0 3px var(--player-color), 0 0 0 9px #d4f46224, 0 0 28px #d4f4625c, 0 14px 26px #000d; animation: active-seat 1.2s ease-in-out infinite alternate; }
 .game-shell--v2 .player-seat[data-active="true"] .player-seat__state { color: var(--ink); border-color: var(--accent); background: var(--accent); }
 .player-seat__cards, .player-seat__shield { padding: 3px 6px; border-radius: 99px; color: var(--text-muted); background: #080b07ec; font: 500 .45rem/1 var(--font-secret), monospace; letter-spacing: .08em; }
@@ -782,6 +786,7 @@
 .private-action-panel header span { color: var(--accent); font: 500 .5rem/1 var(--font-secret), monospace; letter-spacing: .15em; }
 .private-action-panel header strong { font: 800 1.45rem/.95 var(--font-display), sans-serif; }
 .private-action-panel header small { color: var(--text-muted); font: 500 .49rem/1.4 var(--font-secret), monospace; }
+.mobile-pov-label { display: none; font: inherit; }
 .private-hand { min-width: 0; display: flex; align-items: end; justify-content: center; padding-right: 10px; }
 .button-card { position: relative; width: 105px; height: 142px; flex: 0 1 105px; display: grid; align-content: space-between; justify-items: start; margin-right: -12px; padding: 10px; border: 1px solid #2c3327; border-radius: 8px; color: var(--ink); background: linear-gradient(145deg, #f2eedf, #cfc8b3); box-shadow: -5px 9px 18px #0009; text-align: left; transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out); }
 .button-card:hover:not(:disabled), .button-card[data-selected="true"] { z-index: 4; transform: translateY(-18px) rotate(-1deg); box-shadow: 0 14px 25px #000c, 0 0 0 3px var(--accent); }
@@ -801,10 +806,14 @@
 @media (max-width: 900px) {
   .game-shell--v2 { overflow: auto; }
   .game-shell--v2 .game-stage { min-height: 980px; padding: 120px 10px 370px; align-items: start; }
-  .game-shell--v2 .game-table { min-height: 560px; align-content: start; }
-  .game-shell--v2 .player-seats { position: relative; inset: auto; width: min(100%, 620px); height: auto; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0 auto 16px; transform: none; }
-  .game-shell--v2 .player-seat { position: static; width: auto; min-width: 0; transform: none; }
+  .game-shell--v2 .game-table { min-height: 680px; align-content: center; }
+  .game-shell--v2 .player-seats { position: absolute; inset: 0; width: 100%; height: 100%; display: block; margin: 0; transform: none; }
+  .game-shell--v2 .player-seats__others { position: absolute; top: 0; left: 50%; width: min(100%, 620px); display: flex; flex-wrap: wrap; justify-content: center; gap: 7px 2px; transform: translateX(-50%); }
+  .game-shell--v2 .player-seats__local { position: absolute; bottom: 0; left: 50%; display: block; transform: translateX(-50%); }
+  .game-shell--v2 .player-seat { position: static; width: 88px; min-width: 0; transform: none; }
+  .game-shell--v2 .player-seats__local .player-seat { width: 132px; }
   .game-shell--v2 .player-seat .player-avatar { width: 42px; height: 42px; }
+  .game-shell--v2 .player-seat[data-local="true"] .player-avatar { width: 54px; height: 54px; }
   .game-shell--v2 .player-seat .player-badge__name { max-width: 74px; font-size: .52rem; }
   .game-shell--v2 .game-table__object { width: min(96vw, 680px); aspect-ratio: 1.45; }
   .v2-board { grid-template-columns: 75px 1fr 75px; inset: 6%; }
@@ -819,7 +828,8 @@
 
 @media (max-width: 560px) {
   .game-shell--v2 .game-stage { min-height: 980px; padding-top: 106px; }
-  .game-shell--v2 .player-seats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .game-shell--v2 .player-seats__others { width: calc(100% - 4px); gap: 6px 0; }
+  .game-shell--v2 .player-seat { width: 70px; }
   .game-shell--v2 .player-seat .player-avatar { width: 34px; height: 34px; }
   .player-seat__cards, .player-seat__shield { font-size: .38rem; }
   .game-shell--v2 .game-table__object { height: 430px; aspect-ratio: auto; border-radius: 38px; }
@@ -828,7 +838,8 @@
   .v2-counter > strong { min-width: 95px; font-size: 4rem; }
   .v2-play-zone { top: 59%; width: 205px; grid-template-columns: 55px 1fr; }
   .face-down-card { width: 50px; height: 70px; }
-  .v2-direction, .v2-effect { display: none; }
+  .v2-effect { display: none; }
+  .mobile-pov-label { display: inline; color: var(--accent-secondary); }
   .private-hand { justify-content: flex-start; overflow-x: auto; padding: 18px 18px 4px 2px; }
   .button-card { flex: 0 0 88px; min-width: 88px; margin-right: -7px; }
   .claim-builder select { min-width: 138px; }

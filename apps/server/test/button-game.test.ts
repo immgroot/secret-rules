@@ -42,12 +42,13 @@ function privateState(playerId: string, difficulty: "medium" | "hard", status: "
 }
 
 type RoundHarness = ReturnType<typeof createRound>;
-function createRound(options: { players?: number; seed?: string; target?: number; rounds?: 3 | 5 | 7 | 10 } = {}) {
+function createRound(options: { players?: number; seed?: string; target?: number; rounds?: 3 | 5 | 7 | 10; graceMs?: number } = {}) {
   let now = 1_000;
   const count = options.players ?? 4;
   const privateBySocket = new Map<string, PrivatePlayerRoundState | null>();
   const owner = new RoomOwner({
     now: () => now, buttonCountdownMs: 1, challengeTimerMs: 10, challengeRevealMs: 1, turnTimerMs: 1_000,
+    ...(options.graceMs === undefined ? {} : { graceMs: options.graceMs }),
     roundSeed: () => options.seed ?? "button-v2-test-seed",
     publishPrivate: (state, socketId) => privateBySocket.set(socketId, state),
   });
@@ -403,6 +404,75 @@ test("duplicate play is idempotent, stale turns fail, reconnect restores the cur
   assert.deepEqual(restored.hand, before.hand);
   assert.equal(resumed.state.publicRound?.phase, "challenge");
   assert.equal(game.privateBySocket.has("spectator"), false);
+});
+
+test("a permanent departure below two active players abandons the match without a winner or round points", () => {
+  const game = createRound();
+  game.owner.leave("p1", game.roomId);
+  game.owner.leave("p2", game.roomId);
+  assert.equal(game.state().status, "in_game", "two remaining players may finish the active match");
+
+  game.owner.leave("p3", game.roomId);
+  const survivor = game.state();
+  assert.equal(survivor.status, "lobby");
+  assert.equal(survivor.publicRound, null);
+  assert.deepEqual(survivor.roomNotice, { kind: "match_abandoned", message: "NOT ENOUGH PLAYERS REMAIN.", createdAt: 1001 });
+  assert.equal(survivor.players.find((player) => player.playerId === game.sessions[0]!.playerId)?.ready, false);
+  assert.equal(JSON.stringify(survivor).includes("winner"), false);
+  assert.equal(JSON.stringify(survivor).includes("roundScore"), false);
+  assert.equal(game.privateBySocket.get("p0"), null, "abandonment revokes the surviving player's private round delivery");
+  assert.equal(game.privateBySocket.has("spectator"), false, "spectators never receive private state");
+  assert.equal(game.owner.roomCount, 1);
+
+  game.owner.leave("p0", game.roomId);
+  game.owner.leave("spectator", game.roomId);
+  assert.equal(game.owner.roomCount, 0, "an abandoned empty room is destroyed normally");
+});
+
+test("disconnect reservations preserve the match until grace expires, then abandonment wins over timer scoring", () => {
+  const game = createRound({ graceMs: 100 });
+  const reconnectingSecretId = game.privateBySocket.get("p1")!.secretRule.id;
+  game.owner.disconnect("p1");
+  game.owner.disconnect("p2");
+  game.owner.disconnect("p3");
+  game.advance(50);
+  assert.equal(game.state().status, "in_game");
+
+  const resumed = game.owner.resume("p1-restored", credential(game.sessions[1]!));
+  assert.equal(resumed.state.status, "in_game");
+  assert.equal(game.privateBySocket.get("p1-restored")?.secretRule.id, reconnectingSecretId);
+  game.advance(50);
+  assert.equal(game.state().status, "in_game", "two authorized active players keep the match alive");
+  assert.equal(game.state().players.filter((player) => player.role === "player").length, 2);
+
+  game.owner.disconnect("p1-restored");
+  game.advance(100);
+  const abandoned = game.state();
+  assert.equal(abandoned.status, "lobby");
+  assert.equal(abandoned.publicRound, null);
+  assert.equal(abandoned.roomNotice?.message, "NOT ENOUGH PLAYERS REMAIN.");
+  assert.equal(JSON.stringify(abandoned).includes("match_complete"), false);
+  assert.equal(game.privateBySocket.get("p0"), null);
+});
+
+test("a disconnected current player times out without auto-playing a private card or receiving artificial points", () => {
+  const game = createRound({ graceMs: 5_000 });
+  const actor = game.current();
+  const handBefore = actor.privateState.hand;
+  game.owner.disconnect(actor.socket);
+  game.advance(999);
+  assert.equal(game.state().publicRound?.publicGameState.currentPlayerId, actor.playerId);
+  game.advance(1);
+  const afterTimeout = game.state().publicRound!;
+  assert.notEqual(afterTimeout.publicGameState.currentPlayerId, actor.playerId);
+  assert.equal(afterTimeout.publicGameState.discardCount, 0);
+  assert.equal(afterTimeout.publicEvents.at(-1)?.type, "TURN_STARTED");
+  assert.ok(afterTimeout.publicEvents.some((event) => event.type === "TURN_TIMED_OUT" && event.actorPlayerId === actor.playerId));
+  assert.equal(afterTimeout.scores.find((score) => score.playerId === actor.playerId)?.score, 0);
+
+  const session = game.sessions.find((candidate) => candidate.playerId === actor.playerId)!;
+  game.owner.resume("timed-out-restored", credential(session));
+  assert.deepEqual(game.privateBySocket.get("timed-out-restored")?.hand, handBefore);
 });
 
 test("reconnect restores authorized private state throughout every durable Button V2 gameplay phase", () => {

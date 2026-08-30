@@ -8,7 +8,7 @@ import {
   isTargetedButtonCard,
 } from "./button-v2.ts";
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const AVATAR_IDS = ["lime", "violet", "coral", "blue"] as const;
 export const AVATAR_LABELS = { lime: "Bean", violet: "Round", coral: "Sleepy", blue: "Square" } as const;
@@ -80,12 +80,19 @@ export const ChatMessageSchema = z.strictObject({
   text: ChatTextSchema, sentAt: z.number().int().nonnegative(),
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+export const RoomNoticeSchema = z.strictObject({
+  kind: z.literal("match_abandoned"),
+  message: z.literal("NOT ENOUGH PLAYERS REMAIN."),
+  createdAt: z.number().int().nonnegative(),
+});
+export type RoomNotice = z.infer<typeof RoomNoticeSchema>;
 export const PublicRoomSnapshotSchema = z.strictObject({
   roomId: z.uuid(), roomCode: RoomCodeSchema, hostPlayerId: z.uuid().nullable(),
   roomName: RoomNameSchema, visibility: VisibilitySchema, locked: z.boolean(), passwordRequired: z.boolean(),
   status: z.enum(["lobby", "in_game"]),
   players: z.array(PublicPlayerSchema).min(1).max(10 + MAX_SPECTATORS), settings: RoomSettingsSchema,
   chatMessages: z.array(ChatMessageSchema).max(MAX_CHAT_MESSAGES), publicRound: PublicRoundStateSchema.nullable(),
+  roomNotice: RoomNoticeSchema.nullable().default(null),
   createdAt: z.number().int().nonnegative(), stateVersion: z.number().int().positive(),
 }).superRefine((room, context) => {
   const active = room.players.filter((player) => player.role === "player");

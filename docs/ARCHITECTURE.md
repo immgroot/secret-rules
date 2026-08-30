@@ -56,6 +56,22 @@ The sweep advances countdown, turn timeout, challenge timeout, reveal pause,
 vote timeout and Last Chance start. Server random sources own shuffle, STEAL,
 INSPECT and tied-vote coin flips.
 
+## Client-relative table projection
+
+`apps/web/src/components/game/seat-projection.ts` rotates only the render order
+around the authenticated stable player ID. Each active player is assigned the
+front/bottom visual seat on their own device while the other original
+`PublicPlayer` objects are distributed around the perimeter. The authoritative
+player array, current player ID, direction, skip markers, challenge identities,
+and targeted player IDs are never rewritten. Target controls continue sending
+the selected `PublicPlayer.playerId`.
+
+Spectators have no player seat and therefore use the unchanged logical order in
+a neutral orientation. A reconnect derives the same point of view again from
+the stable room player ID; visual seat position is never stored or broadcast.
+The mobile layout separates the local front seat from a wrapped opponent rail
+outside the table while retaining the server-owned direction indicator.
+
 ## Deployment shape
 
 Web and server deploy separately from the repository root/workspace graph so the
