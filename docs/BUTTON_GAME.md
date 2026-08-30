@@ -53,10 +53,13 @@ safety action.
 
 ## Claim and challenge
 
-The client sends a card ID, claimed card kind, and a target only for a targeted
-claim. The server verifies ownership but broadcasts only the claim. A player may
-claim a kind they do not own. Targeted fake claims use one public target; the
-target applies only when the real card matches that targeted claim.
+The client sends an owned card ID and a claimed card kind. A targeted actual card
+also requires a private real target; a targeted claim requires a public claim
+target. The server looks up the actual card before independently validating both
+values. If the same targeted card is claimed truthfully, both targets must match.
+If a targeted actual card is hidden behind another claim, its private target is
+retained for authoritative resolution and is never added to the public claim.
+Players may claim kinds they do not own.
 
 During the challenge window, the first valid opponent action wins atomically.
 No response means trust. An unchallenged card stays hidden and its real effect
@@ -84,9 +87,10 @@ secured counter cannot move during this rotation.
 Public state contains counter, target, turn, direction, deck/discard counts,
 hand counts, shields/skips, public claim/target, challenge result when revealed,
 effect result, vote totals/result, public scores and reveal-safe results. It
-never contains card IDs, deck order, unchallenged actual cards, stolen/penalty
-card identities, Inspect knowledge, Secret assignments, vote identities or
-random seeds.
+never contains card IDs, deck order, private real targets, unchallenged actual
+cards, stolen/penalty card identities, Inspect knowledge, Secret assignments,
+vote identities or random seeds. The thief receives stolen-card knowledge in
+their own private projection; the inspector alone receives Inspect knowledge.
 
 Private state contains only the authenticated player's hand, Secret, masked live
 Secret progress, Inspect records and pending choice. Its independent `revision`

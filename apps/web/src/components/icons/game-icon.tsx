@@ -24,6 +24,12 @@ const icons = {
   diagonal: <path d="M5 19 19 5M5 5h14v14" />,
   close: <path d="m6 6 12 12m0-12L6 18" />,
   play: <path d="m8 4 12 8-12 8Z" />,
+  skip: <><path d="M5 5v14M8 12h9" /><path d="m13 7 5 5-5 5" /></>,
+  steal: <><rect x="8" y="4" width="11" height="15" rx="2" /><path d="M5 8H3v12h10v-2M12 11h4m-2-2 2 2-2 2" /></>,
+  inspect: <><path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /><path d="m18 18 3 3" /></>,
+  reverse: <><path d="M4 8h12l-3-3m3 3-3 3M20 16H8l3-3m-3 3 3 3" /></>,
+  shield: <path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6Z" />,
+  wild: <><path d="m12 2 2.2 6.3L21 6l-4.2 5.5L22 16l-6.8-.2L14 22l-3.2-5.8L5 20l2-6.5L2 10l6.8-.7Z" /><circle cx="12" cy="12" r="2" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof icons;

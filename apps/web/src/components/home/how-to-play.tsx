@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, type ReactNode } from "react";
 import { useSound } from "../../preferences/provider.tsx";
 import { GameButton, GameModal, SecretCard } from "../ui/index.ts";
 import { GameIcon } from "../icons/game-icon.tsx";
-import { tutorialReducer, type TutorialStep } from "./interaction-state.ts";
+import { INITIAL_TUTORIAL_STATE, tutorialCanContinue, tutorialStateReducer, type TutorialStep } from "./interaction-state.ts";
 
 export const tutorialSteps = [
   { title: "GET YOUR CARDS", text: "Everyone starts with five private cards. The other players never receive your hand." },
@@ -32,11 +32,13 @@ const effects = [
 
 function TutorialTable({ children }: { children: ReactNode }) {
   return <div className="tutorial-pov" aria-label="Example table from your point of view">
-    <span className="tutorial-pov__player tutorial-pov__player--top">ALEX</span>
-    <span className="tutorial-pov__player tutorial-pov__player--left">SAM</span>
-    <span className="tutorial-pov__player tutorial-pov__player--right">NIDA</span>
-    <span className="tutorial-pov__player tutorial-pov__player--you">YOU · FRONT</span>
-    <div className="tutorial-pov__center">{children}</div>
+    <div className="tutorial-pov__seats">
+      <span className="tutorial-pov__player tutorial-pov__player--top">ALEX</span>
+      <span className="tutorial-pov__player tutorial-pov__player--left">SAM</span>
+      <span className="tutorial-pov__player tutorial-pov__player--right">NIDA</span>
+      <span className="tutorial-pov__player tutorial-pov__player--you">YOU · FRONT</span>
+    </div>
+    <div className="tutorial-pov__center" data-layer="tutorial-foreground">{children}</div>
   </div>;
 }
 
@@ -60,20 +62,19 @@ function TutorialVisual({ step, realCard, claim, chooseReal, chooseClaim }: {
 }
 
 export function HowToPlay({ onClose, onRoomAction }: { onClose: () => void; onRoomAction: (mode: "create" | "join") => void }) {
-  const [step, dispatch] = useReducer(tutorialReducer, 0);
-  const [realCard, setRealCard] = useState<string | null>(null);
-  const [claim, setClaim] = useState<string | null>(null);
+  const [tutorial, dispatch] = useReducer(tutorialStateReducer, INITIAL_TUTORIAL_STATE);
+  const { step, realCard, claim } = tutorial;
   const heading = useRef<HTMLHeadingElement>(null);
   const sound = useSound();
-  const canContinue = step !== 2 || realCard === "-2" ? step !== 3 || claim === "+2" : false;
+  const canContinue = tutorialCanContinue(tutorial);
   useEffect(() => { heading.current?.focus(); }, [step]);
-  function move(action: "next" | "back") { sound.play("cardSlide"); dispatch(action); }
-  function restart() { sound.play("cardSlide"); setRealCard(null); setClaim(null); dispatch("reset"); }
+  function move(action: "next" | "back") { sound.play("cardSlide"); dispatch({ type: action }); }
+  function restart() { sound.play("cardSlide"); dispatch({ type: "reset" }); }
   return <GameModal open onClose={onClose} title="HOW TO PLAY" className="tutorial-modal tutorial-modal--v2">
     <div className="tutorial-progress"><p className="eyebrow" role="status">STEP {String(step + 1).padStart(2, "0")} / 10</p><ol aria-label="Tutorial progress">{tutorialSteps.map((item, index) => <li key={item.title} aria-current={index === step ? "step" : undefined}><span className="sr-only">Step {index + 1}: {item.title}</span></li>)}</ol></div>
     <h3 ref={heading} tabIndex={-1} className="tutorial-title">{String(step + 1).padStart(2, "0")} — {tutorialSteps[step].title}</h3>
     <p className="tutorial-v2-copy">{tutorialSteps[step].text}</p>
-    <div className={`tutorial-stage tutorial-stage--${step}`} key={step}><TutorialVisual step={step} realCard={realCard} claim={claim} chooseReal={(card) => { sound.play("cardSlide"); setRealCard(card); }} chooseClaim={(card) => { sound.play("uiClick"); setClaim(card); }} /></div>
+    <div className={`tutorial-stage tutorial-stage--${step}`} key={step}><TutorialVisual step={step} realCard={realCard} claim={claim} chooseReal={(card) => { sound.play("cardSlide"); dispatch({ type: "selectReal", card }); }} chooseClaim={(card) => { sound.play("uiClick"); dispatch({ type: "selectClaim", card }); }} /></div>
     <p className="tutorial-disclaimer"><GameIcon name="secret" size={13} /> Guided public example. Real hands, choices, progress, and Secrets go only to their authorized player.</p>
     <div className="tutorial-secondary-actions"><GameButton variant="ghost" size="small" onClick={restart}><GameIcon name="reconnect" size={14} /> RESTART</GameButton><GameButton variant="ghost" size="small" onClick={onClose}>SKIP TUTORIAL</GameButton></div>
     <div className="tutorial-actions"><GameButton variant="ghost" size="small" disabled={step === 0} onClick={() => move("back")}><GameIcon className="icon-back" name="arrow" size={16} /> BACK</GameButton>{step < 9 ? <GameButton disabled={!canContinue} onClick={() => move("next")}>NEXT<GameIcon name="arrow" size={18} /></GameButton> : <div className="tutorial-room-actions"><GameButton size="small" onClick={() => onRoomAction("create")}>CREATE ROOM</GameButton><GameButton variant="secondary" size="small" onClick={() => onRoomAction("join")}>JOIN ROOM</GameButton></div>}</div>

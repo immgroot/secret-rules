@@ -84,7 +84,7 @@ test("private round deliveries reject stale revisions, foreign recipients and fo
       rewardWeight: 1, visibility: "private", evaluatorId: "rule:button-v2-bluff-success",
     },
     privateProgress: { status: "in_progress", current: 0, target: 3, summary: "0 / 3" },
-    privateTargetPlayerId: null, acknowledgedAt: null, inspections: [], pendingChoice: null,
+    privateTargetPlayerId: null, acknowledgedAt: null, inspections: [], cardTransfers: [], pendingChoice: null,
   });
   assert.equal(newerPrivateState(current, { ...current, revision: 6 }, playerId, roundId), current);
   assert.equal(newerPrivateState(current, { ...current, revision: 7 }, playerId, roundId), current);

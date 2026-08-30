@@ -296,7 +296,7 @@ export function generateRuleSet(input: GenerateRuleSetInput): GeneratedRuleSet {
     const privateState = PrivatePlayerRoundStateSchema.parse({
       roundId, roundNumber: input.roundNumber, miniGameId: input.miniGameId, playerId, revision: 1, hand: [], secretRule: rule,
       privateProgress: { status: "not_started", current: target === null ? null : 0, target, summary: "NOT STARTED" },
-      privateTargetPlayerId: rule.targetPlayerId ?? null, acknowledgedAt: null, inspections: [], pendingChoice: null,
+      privateTargetPlayerId: rule.targetPlayerId ?? null, acknowledgedAt: null, inspections: [], cardTransfers: [], pendingChoice: null,
     });
     privateAssignments.set(playerId, privateState);
     historyEntries.set(playerId, { templateId: rule.templateId, identity: rule.identity, category: rule.category, ...(rule.targetPlayerId ? { targetPlayerId: rule.targetPlayerId } : {}) });

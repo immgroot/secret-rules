@@ -202,6 +202,7 @@
 
 .hero-art {
   position: relative;
+  --hero-secret-card-width: 250px;
   height: 580px;
   min-width: 0;
   perspective: 1100px;
@@ -251,14 +252,16 @@
 
 .hero-card {
   position: absolute;
+  width: var(--hero-secret-card-width);
+  aspect-ratio: 5 / 7;
+  height: auto;
+  container-type: inline-size;
 }
 
 .hero-card--a {
   z-index: 3;
   left: 10px;
   top: 91px;
-  width: 262px;
-  height: 354px;
   transform: rotate(-9deg);
 }
 
@@ -266,39 +269,14 @@
   z-index: 2;
   right: 15px;
   top: 37px;
-  width: 250px;
-  height: 330px;
   transform: rotate(10deg);
 }
 
 .hero-card--c {
   z-index: 4;
   right: 37px;
-  top: 325px;
-  width: 242px;
-  height: 228px;
+  top: 225px;
   transform: rotate(6deg);
-}
-
-.hero-card--b .secret-card__rule {
-  font-size: 2.7rem;
-}
-
-.hero-card--c .secret-card__rule {
-  font-size: 2.5rem;
-}
-
-.hero-card--c .secret-card__overline {
-  margin-top: 16px;
-}
-
-.hero-card--c .secret-card__whisper {
-  padding-top: 10px;
-  margin-bottom: 12px;
-}
-
-.hero-card--c .secret-card__footer {
-  min-height: 36px;
 }
 
 .scene-note {
@@ -696,32 +674,18 @@
     padding-block: 65px 75px;
   }
   .hero-art {
+    --hero-secret-card-width: 272px;
     height: 610px;
   }
   .hero-card--a {
     left: 20px;
-    width: 282px;
-    height: 377px;
   }
   .hero-card--b {
     right: 31px;
-    width: 272px;
-    height: 360px;
   }
   .hero-card--c {
-    top: 344px;
+    top: 220px;
     right: 48px;
-    width: 264px;
-    height: 243px;
-  }
-  .hero-card--a .secret-card__rule {
-    font-size: 3.35rem;
-  }
-  .hero-card--b .secret-card__rule {
-    font-size: 3.05rem;
-  }
-  .hero-card--c .secret-card__rule {
-    font-size: 2.75rem;
   }
   .scene-note {
     top: 507px;
@@ -737,33 +701,22 @@
     grid-template-columns: 1fr 1fr;
   }
   .hero-art {
+    --hero-secret-card-width: 217px;
     height: 520px;
   }
   .hero-card--a {
     left: 2px;
-    width: 225px;
-    height: 321px;
     top: 83px;
   }
   .hero-card--b {
     right: 2px;
-    width: 217px;
-    height: 310px;
   }
   .hero-card--c {
-    top: 300px;
+    top: 210px;
     right: 3px;
-    width: 215px;
-    height: 215px;
   }
   .secret-card__rule {
     font-size: 2.6rem;
-  }
-  .hero-card--b .secret-card__rule {
-    font-size: 2.4rem;
-  }
-  .hero-card--c .secret-card__rule {
-    font-size: 2.1rem;
   }
   .scene-note {
     top: 443px;
@@ -989,6 +942,7 @@
     font-size: .61rem;
   }
   .hero-art {
+    --hero-secret-card-width: 46%;
     height: 635px;
     max-width: 400px;
     margin-top: 12px;
@@ -1008,22 +962,16 @@
   .hero-card--a {
     left: 2%;
     top: 48px;
-    width: 46%;
-    height: 318px;
     transform: rotate(-3deg);
   }
   .hero-card--b {
     right: 2%;
     top: 32px;
-    width: 46%;
-    height: 312px;
     transform: rotate(3deg);
   }
   .hero-card--c {
-    right: 8%;
-    top: 382px;
-    width: 68%;
-    height: 236px;
+    right: 9%;
+    top: 340px;
     transform: rotate(4deg);
   }
   .secret-card {
@@ -1039,12 +987,6 @@
   }
   .secret-card__number {
     display: none;
-  }
-  .hero-card--a .secret-card__rule, .hero-card--b .secret-card__rule {
-    font-size: clamp(1.7rem, 8.2vw, 2rem);
-  }
-  .hero-card--c .secret-card__rule {
-    font-size: 2.45rem;
   }
   .hero-card--a .secret-card__footer {
     flex-wrap: wrap;
@@ -1213,9 +1155,6 @@
   .content-width {
     width: calc(100% - 32px);
   }
-  .hero-card--c .secret-card__rule {
-    font-size: 2.15rem;
-  }
   .site-header nav {
     gap: 0;
   }
@@ -1232,6 +1171,37 @@
     gap: 7px;
     padding-right: 8px;
   }
+}
+
+/* Hero Secret cards share one physical 5:7 body. Copy scales inside a bounded
+   content area; the outer article remains visible so its inspect tooltip works. */
+.hero-card.secret-card--copy-short .secret-card__rule {
+  font-size: clamp(1.55rem, 15cqi, 3rem);
+  line-height: .9;
+}
+
+.hero-card.secret-card--copy-medium .secret-card__rule {
+  font-size: clamp(1.3rem, 13cqi, 2.55rem);
+  line-height: .92;
+}
+
+.hero-card.secret-card--copy-long .secret-card__rule {
+  font-size: clamp(1.08rem, 10.5cqi, 2.1rem);
+  line-height: .96;
+}
+
+.hero-card .secret-card__rule {
+  max-height: 100%;
+  letter-spacing: -.01em;
+}
+
+.hero-card .secret-card__overline {
+  margin-top: clamp(10px, 7cqi, 21px);
+}
+
+.hero-card .secret-card__whisper {
+  margin-bottom: clamp(8px, 5cqi, 19px);
+  padding-top: clamp(8px, 6cqi, 20px);
 }
 
 /* Small labels still need to read as text, not texture, at every breakpoint. */
@@ -1269,6 +1239,7 @@
 .how-video { position: relative; width: 100%; aspect-ratio: 16 / 8.4; overflow: hidden; margin-top: 34px; border: 1px solid #d4f46235; border-radius: 16px; background: #0a0d09; box-shadow: 0 24px 60px #0009; }
 .how-video video { width: 100%; height: 100%; display: none; object-fit: cover; }
 .how-video[data-available="true"] video { display: block; }
+.how-video[data-available="true"] .how-video__poster { display: none; }
 .how-video__poster { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; background: radial-gradient(circle at 50% 45%, #34402b, #151a12 50%, #080a07 100%); }
 .how-video__poster::before { content: ""; position: absolute; inset: 24px; border: 1px solid #ffffff0c; border-radius: 9px; }
 .how-video__play { width: 78px; height: 78px; display: grid; place-items: center; margin-bottom: 10px; border: 1px solid var(--accent); border-radius: 50%; color: var(--ink); background: var(--accent); box-shadow: 0 0 36px #d4f46234; }
@@ -1283,8 +1254,9 @@
 .tutorial-modal--v2 .tutorial-stage { min-height: 350px; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding-block: 4px; }
 .tutorial-pov { position: relative; width: 100%; max-width: 620px; min-height: 340px; display: grid; place-items: center; overflow: hidden; border: 1px solid #d4f46224; border-radius: 49%; background: radial-gradient(circle, #303b28, #20281b 56%, #11150f 57%, #090b08 100%); box-shadow: inset 0 0 44px #0008, 0 18px 40px #0005; }
 .tutorial-pov::after { content: "PUBLIC GUIDED EXAMPLE"; position: absolute; inset: 30px; border: 1px dashed #d4f4621a; border-radius: 48%; color: #d4f46244; text-align: center; padding-top: 18px; font: 500 .47rem/1 var(--font-secret), monospace; letter-spacing: .16em; pointer-events: none; }
-.tutorial-pov__center { position: relative; z-index: 2; width: 76%; max-width: 450px; display: grid; place-items: center; gap: 10px; }
-.tutorial-pov__player { position: absolute; z-index: 3; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: 5px; color: var(--text-secondary); background: #11150ff0; font: 700 .52rem/1 var(--font-secret), monospace; letter-spacing: .1em; }
+.tutorial-pov__seats { position: absolute; z-index: 1; inset: 0; pointer-events: none; }
+.tutorial-pov__center { position: relative; z-index: 3; isolation: isolate; width: 76%; max-width: 450px; display: grid; place-items: center; gap: 10px; }
+.tutorial-pov__player { position: absolute; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: 5px; color: var(--text-secondary); background: #11150ff0; font: 700 .52rem/1 var(--font-secret), monospace; letter-spacing: .1em; }
 .tutorial-pov__player--top { top: 8px; left: 50%; transform: translateX(-50%); }
 .tutorial-pov__player--left { left: 9px; top: 50%; transform: translateY(-50%); }
 .tutorial-pov__player--right { right: 9px; top: 50%; transform: translateY(-50%); }
@@ -1384,10 +1356,6 @@
 
 .steps-list p {
   font-size: .8125rem;
-}
-
-.hero-card--c .secret-card__whisper {
-  margin-bottom: 10px;
 }
 
 @media (max-width: 640px) {

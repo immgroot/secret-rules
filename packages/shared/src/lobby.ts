@@ -8,7 +8,7 @@ import {
   isTargetedButtonCard,
 } from "./button-v2.ts";
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const AVATAR_IDS = ["lime", "violet", "coral", "blue"] as const;
 export const AVATAR_LABELS = { lime: "Bean", violet: "Round", coral: "Sleepy", blue: "Square" } as const;
@@ -177,7 +177,9 @@ export const SetRoleSchema = RoomCommandSchema.extend({ role: PlayerRoleSchema }
 export const ChatSendSchema = RoomCommandSchema.extend({ text: ChatTextSchema });
 export const ReportPlayerSchema = TargetPlayerSchema.extend({ reason: ReportReasonSchema, description: ReportDescriptionSchema });
 export const PlayButtonCardSchema = RoomCommandSchema.extend({
-  cardId: z.uuid(), claim: ButtonCardKindSchema, targetPlayerId: z.uuid().optional(),
+  cardId: z.uuid(), claim: ButtonCardKindSchema,
+  targetPlayerId: z.uuid().optional(),
+  realTargetPlayerId: z.uuid().optional(),
 }).superRefine((value, context) => {
   const targeted = isTargetedButtonCard(value.claim);
   if (targeted !== (value.targetPlayerId !== undefined)) context.addIssue({ code: "custom", message: "Targeted claims require exactly one public target." });

@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { demoFrames, demoReducer, initialDemo, scheduleDemoStep, type DemoState, type DemoAction } from "../src/components/home/demo/script.ts";
-import { inspectCard, logoClickCount, tutorialReducer, type TutorialStep } from "../src/components/home/interaction-state.ts";
+import { INITIAL_TUTORIAL_STATE, inspectCard, logoClickCount, tutorialCanContinue, tutorialReducer, tutorialStateReducer, type TutorialState, type TutorialStep } from "../src/components/home/interaction-state.ts";
 import { SecretCard } from "../src/components/ui/secret-card.tsx";
 import { createPreferenceStore, DEFAULT_PREFERENCES, isMotionReduced, parsePreferences, PREFERENCES_KEY, type Preferences } from "../src/preferences/store.ts";
 import { createSoundController, soundEvents, soundGain, type SoundEvent } from "../src/audio/sounds.ts";
+import { eventsAfter, latestPrivateEffect, privateEffectIsVisible, publicEffectLabel, shouldNotifyLocalTurn } from "../src/components/game/button-presentation.ts";
 import { ChatMessages } from "../src/components/lobby/chat-panel.tsx";
 import { randomUUID } from "node:crypto";
 import type { ChatMessage } from "@secret-rules/shared";
@@ -76,6 +77,24 @@ test("tutorial next/back are bounded and reopening resets to step one", () => {
   assert.equal(tutorialReducer(step, "reset"), 0);
 });
 
+test("tutorial step three requires one -2 selection, enables Next, advances, and resets cleanly", () => {
+  let state: TutorialState = { ...INITIAL_TUTORIAL_STATE, step: 2 };
+  assert.equal(tutorialCanContinue(state), false, "Next starts disabled on PLAY A REAL CARD");
+  assert.equal(tutorialStateReducer(state, { type: "next" }), state, "a disabled scripted step cannot advance");
+
+  state = tutorialStateReducer(state, { type: "selectReal", card: "SKIP" });
+  assert.equal(tutorialCanContinue(state), false, "a different real card does not satisfy the -2 lesson");
+
+  state = tutorialStateReducer(state, { type: "selectReal", card: "-2" });
+  assert.equal(tutorialCanContinue(state), true, "selecting -2 enables Next immediately");
+  state = tutorialStateReducer(state, { type: "next" });
+  assert.equal(state.step, 3, "one Next action advances to MAKE YOUR CLAIM");
+
+  state = tutorialStateReducer(state, { type: "selectClaim", card: "+2" });
+  state = tutorialStateReducer(state, { type: "reset" });
+  assert.deepEqual(state, INITIAL_TUTORIAL_STATE, "restart clears step, real card, and claim");
+});
+
 test("idle and completed demos never schedule more work", () => {
   for (const stage of ["idle", "complete"] as const) {
     const cancel = scheduleDemoStep({ stage, run: 2 }, () => assert.fail("Unexpected dispatch"), {
@@ -93,6 +112,35 @@ test("inspection selects only one card and exposes a native pressed control", ()
   assert.match(html, /aria-pressed="true"/);
   assert.match(html, /Inspect YOU&#x27;s example card/);
   assert.equal((html.match(/<button /g) ?? []).length, 1);
+});
+
+test("private effect knowledge selects the latest authorized result and dismissal is local", () => {
+  const inspectedPlayerId = randomUUID();
+  const inspectionId = randomUUID();
+  const inspection = latestPrivateEffect({
+    inspections: [{ knowledgeId: inspectionId, targetPlayerId: inspectedPlayerId, card: "PLUS_TWO", inspectedAt: 20 }],
+    cardTransfers: [],
+  });
+  assert.deepEqual(inspection, { kind: "inspect", id: inspectionId, playerId: inspectedPlayerId, card: "PLUS_TWO" });
+  assert.equal(privateEffectIsVisible(inspection, null), true);
+  assert.equal(privateEffectIsVisible(inspection, inspectionId), false, "GOT IT dismisses that knowledge result only");
+
+  const transferId = randomUUID();
+  const transfer = latestPrivateEffect({
+    inspections: [{ knowledgeId: inspectionId, targetPlayerId: inspectedPlayerId, card: "PLUS_TWO", inspectedAt: 20 }],
+    cardTransfers: [{ knowledgeId: transferId, sourcePlayerId: inspectedPlayerId, card: "SKIP", receivedAt: 21 }],
+  });
+  assert.deepEqual(transfer, { kind: "steal", id: transferId, playerId: inspectedPlayerId, card: "SKIP" });
+});
+
+test("public effect feedback names consequential state without exposing private card knowledge", () => {
+  assert.equal(publicEffectLabel("skip"), "SKIP ARMED");
+  assert.equal(publicEffectLabel("reverse"), "DIRECTION REVERSED");
+  assert.equal(publicEffectLabel("shield"), "SHIELD ARMED");
+  assert.equal(publicEffectLabel("shield_blocked"), "SHIELD BLOCKED IT");
+  assert.equal(publicEffectLabel("inspect"), "INSPECTION COMPLETE");
+  assert.equal(publicEffectLabel("steal"), "A CARD WAS STOLEN");
+  assert.equal(publicEffectLabel("movement"), "BUTTON MOVED");
 });
 
 test("preference hydration never overwrites saved preferences with defaults", () => {
@@ -173,6 +221,24 @@ test("sound hooks respect master mute, UI mute, volumes and lifecycle", () => {
   assert.equal(soundGain("buttonPress", { ...preferences, masterVolume: 0 }), 0);
   sound.stop(); sound.dispose();
   assert.equal(stopped, 1); assert.equal(disposed, 1);
+});
+
+test("authoritative local turn transitions notify once and never notify another player", () => {
+  const localPlayerId = "00000000-0000-4000-8000-000000000001";
+  const otherPlayerId = "00000000-0000-4000-8000-000000000002";
+  assert.equal(shouldNotifyLocalTurn(null, "round:local:100", localPlayerId, localPlayerId), true);
+  assert.equal(shouldNotifyLocalTurn("round:local:100", "round:local:100", localPlayerId, localPlayerId), false);
+  assert.equal(shouldNotifyLocalTurn("round:other:90", "round:other:100", otherPlayerId, localPlayerId), false);
+  assert.equal(shouldNotifyLocalTurn("round:other:100", "round:local:200", localPlayerId, localPlayerId), true);
+  assert.ok("yourTurn" in soundEvents);
+});
+
+test("public event sound processing ignores initial snapshots and returns only unseen events", () => {
+  const first = { eventId: "00000000-0000-4000-8000-000000000001", type: "TURN_STARTED", at: 1, actorPlayerId: null, targetPlayerId: null, claim: null, revealedCard: null, movement: null } as const;
+  const second = { ...first, eventId: "00000000-0000-4000-8000-000000000002", type: "CARD_PLAYED" as const, at: 2 };
+  assert.deepEqual(eventsAfter([first, second], first.eventId), [second]);
+  assert.deepEqual(eventsAfter([first, second], null), []);
+  assert.deepEqual(eventsAfter([first, second], "00000000-0000-4000-8000-999999999999"), []);
 });
 
 test("the logo easter egg stops counting after its one reveal", () => {

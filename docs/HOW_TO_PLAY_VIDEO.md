@@ -39,6 +39,82 @@ Keep the private/public distinction visible at all times. Private panels should 
 
 The 13-scene example uses Nida as the challenger and the prescribed `-2` real card / `+2` public claim so the video, captions, and interactive tutorial tell the same story. Avoid cutting so quickly that the viewer misses which value was real and which was claimed. The interactive tutorial carries the additional target-vote and Last Chance explanation that cannot fit cleanly in this short cut.
 
+## AI production workflow
+
+The tutorial must primarily show the real Button V2 interface. Generative video must not invent gameplay screens, substitute different cards, change player names between shots, or create actions the authoritative app cannot perform.
+
+1. Capture clean 1440p or 1080p footage from the real app. Use a dedicated local room with safe fictional player names and no production credentials.
+2. Capture every scene below as a separate take so pacing can change without recreating the interface.
+3. Use AI only for voiceover, noise and image cleanup, pacing or edit assistance, transitions, subtitle timing, and optional logo motion for the intro or outro.
+4. Keep the real captured interface visible for every gameplay explanation. Do not let generative video replace it with hallucinated UI.
+5. Export an H.264 MP4 with web-optimized metadata, a 16:9 frame, and enough bitrate to keep card labels readable.
+6. Place the approved file at `apps/web/public/videos/how-to-play.mp4`. Keep `apps/web/public/videos/how-to-play.vtt` synchronized with the final narration.
+
+### Exact capture shot list
+
+Capture these states from the current real UI, in this order:
+
+1. Homepage logo and the create/join room actions.
+2. A four-player lobby filling with GROOT, NIDA, ALEX, and SAM, followed by synchronized ready states.
+3. The four-player physical oval table with the local player projected at the bottom/front seat.
+4. The local five-card private hand; opposing seats show public hand counts only.
+5. The local Secret reveal and acknowledgement, framed clearly as private.
+6. `YOUR TURN` with the local active ring, turn banner, and connected countdown.
+7. Real-card selection on `-2`, including the `REAL CARD · PRIVATE` summary.
+8. The full claim-card picker selecting `+2`, followed by the private-real/public-claim confirmation.
+9. `PLAY FACE-DOWN`, with the generic SECRET RULES card back moving from the local seat to the center.
+10. Public challenge state: `YOU CLAIM +2`, face-down card, countdown, and NIDA selecting `CALL BLUFF`.
+11. Challenge reveal: card flip to actual `-2`, `CLAIMED +2`, `ACTUAL -2`, and `BLUFF CAUGHT`.
+12. A second truthful example that flips to `+2` and resolves as `FALSE ACCUSATION`.
+13. Targeted claim selection for STEAL, showing player buttons backed by stable table identities.
+14. Short real-interface effect takes for SKIP, STEAL, INSPECT, REVERSE, SHIELD, and WILD. INSPECT knowledge must appear only in the authorized player's private panel.
+15. A no-challenge resolution where the card moves to discard face-down and its identity remains hidden.
+16. Button movement reaching the exact target and opening the synchronized private vote.
+17. Secret reveal, round score breakdown, standings, and match completion.
+18. Final wide table shot, logo, and homepage create-room action.
+
+Also capture one ten-player wide table and one 390×844 mobile take for editorial flexibility. Never capture raw resume credentials, browser storage, server logs, developer tools, unrevealed opponent cards, or another player's Secret.
+
+### Scene-by-scene capture sheet
+
+Use one four-player room throughout: **GROOT** (recording POV), **NIDA**, **MUS**, and **NOOR**. Record GROOT's browser unless the POV column explicitly changes. Preserve the same names, colors, relative seats, room target, and score state across editorially continuous shots. A local deterministic server seed may be introduced only in a separately authorized capture task; never force cards, outcomes, timers, or Secrets from browser state.
+
+| Scene / time | Capture POV and active player | Required authoritative setup | Action and expected visible result | Privacy framing |
+| --- | --- | --- | --- | --- |
+| 1 · 00:00–00:05 | Homepage / neutral camera | No room | Start on the real logo, then cut to the real table silhouette. | No private data. |
+| 2 · 00:05–00:10 | GROOT host browser | GROOT creates; NIDA, MUS, NOOR join by code and ready | Capture the short code share, four synchronized seats, then Start Game. | Crop browser chrome; never show a resume token or storage panel. |
+| 3 · 00:10–00:15 | GROOT POV; pre-round | GROOT's server-dealt hand includes `-2`, `+2`, `INSPECT`, `SHIELD`, `WILD` or a visually equivalent five-card teaching hand | Reveal GROOT's five-card tray while opponents show backs/counts. | Label `YOUR HAND · ONLY YOU`; capture no other browser's hand. |
+| 4 · 00:15–00:20 | GROOT POV | GROOT receives `SUCCESSFULLY BLUFF 3 TIMES.` | Open and acknowledge the real Secret deal. | Keep the `PRIVATE` / `ONLY YOU` framing in shot. |
+| 5 · 00:20–00:25 | GROOT active | Real card `-2` in GROOT's hand | Select `-2`; hold long enough to read `REAL CARD · PRIVATE`. | Center card remains unsubmitted until the next shot. |
+| 6 · 00:25–00:31 | GROOT active | Selected real `-2` | Select public claim `+2`, confirm, and play face-down. | Show the private-real/public-claim split; do not flip the card. |
+| 7 · 00:31–00:36 | NIDA browser; GROOT remains claimed actor | Challenge timer open on GROOT's `+2` claim | NIDA presses `CALL BLUFF`; other challenge controls lock. | NIDA sees only the public claim and card back. |
+| 8 · 00:36–00:43 | Shared table, preferably GROOT POV | Challenge from Scene 7 | Capture actual `-2`, claimed `+2`, `BLUFF CAUGHT`, score delta, then GROOT's private penalty-discard choice. | The penalty card face appears only in GROOT's capture; use a public-table cut for the score. |
+| 9 · 00:43–00:48 | NIDA POV; NIDA active | NIDA has real `+2`, claims `+2`; GROOT challenges | Capture `FALSE ACCUSATION`, NIDA +1, GROOT -1, and GROOT's private penalty discard. | The truthful card is public only because the challenge legitimately flips it. |
+| 10 · 00:48–00:56 | Use the acting player's POV for private feedback; public POV for consequences | Six separate authoritative takes: STEAL→NIDA, SKIP→MUS, INSPECT→NOOR, REVERSE, SHIELD then hostile target, WILD choice `+2` | STEAL: face-down transfer plus thief-only `CARD STOLEN`; SKIP: mark and consume next turn; INSPECT: inspector-only result; REVERSE: direction changes; SHIELD: `SHIELD BLOCKED IT`; WILD: private choice then exactly +2. | Never composite actual stolen/inspected faces onto the public table. Real targets are selected privately; claim targets are public only when the claim needs one. |
+| 11 · 00:56–00:62 | Shared table / active player alternates | Counter begins 28, target 30; legal actions produce 29 then exact 30 | Capture server-synchronized Button movement, target lock, and exact-target response. | Counter and target are public. |
+| 12 · 00:62–00:68 | GROOT POV, then reveal-safe shared view | GROOT's Secret progress reaches 3 / 3 | First capture private progress, then the legitimate round reveal with `COMPLETED · +3`. | Do not show completion to the table before reveal-safe phase. |
+| 13 · 00:68–00:75 | Shared standings then homepage | Completed match with plausible final scores for all four players | Capture final standings, pull back, cut to logo, tagline, and real `CREATE ROOM` control. | Standings and revealed round results are public. |
+
+For the six-effect montage, record each effect as its own clean take with two seconds of handle before and after the action. Also record: (1) a no-challenge face-down discard, (2) each caught-bluff cancellation with no effect, (3) one 10-player public table, and (4) one 390×844 GROOT POV. This gives the editor enough material to teach the rule without fabricating UI.
+
+## Voice, music, and sound direction
+
+- **Voice:** confident, playful, slightly mysterious, friendly, and quick but understandable. Avoid corporate polish, theatrical menace, or a childish read. Record clean 48 kHz / 24-bit mono before music and processing.
+- **Pauses:** leave a deliberate beat before and after `CALL BLUFF`, `BLUFF CAUGHT`, `FALSE ACCUSATION`, and `SECRET COMPLETED`; let the on-screen state land before the next sentence.
+- **Music:** subtle mysterious-tabletop rhythm with playful tension. Avoid epic trailer percussion, horror drones, casino swing, and cyberpunk synth leads. Keep the bed at least 12–16 dB beneath narration and duck another 2–4 dB under dense lines.
+- **Game sound:** retain real card deal, selection, placement, turn ping, Call Bluff, flip, Button movement, and Secret reveal sounds. Use them as punctuation, never over a consonant-heavy narration phrase. Do not add fake sounds that suggest actions the UI did not perform.
+- **Mix:** narration centered and intelligible; music broad but restrained; game effects short and placed to picture. Check the final mix on laptop speakers and headphones.
+
+## Export and poster delivery
+
+Export an H.264 MP4, High Profile, progressive 1920×1080 at the capture frame rate (30 or 60 fps), with AAC-LC stereo audio at 48 kHz / 160–192 kbps. Use a visually inspected web bitrate around 6–10 Mbps for 30 fps or 10–16 Mbps for 60 fps, enable fast-start metadata, and keep card text readable before optimizing file size. The approved deliverables are:
+
+- `apps/web/public/videos/how-to-play.mp4`
+- `apps/web/public/videos/how-to-play-poster.webp` (optional 1920×1080 poster, no private card face)
+- `apps/web/public/videos/how-to-play.vtt`
+
+The component references the future poster path now. If the poster is absent, the dark premium container and interactive-tutorial fallback still supply the loading/failure presentation. Do not add a fake poster or MP4 merely to make the paths return 200.
+
 ## Accessibility and delivery checklist
 
 - Captions match the final narration and remain enabled through the HTML `<track>` element.

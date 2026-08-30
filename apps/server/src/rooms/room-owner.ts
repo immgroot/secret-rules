@@ -38,7 +38,8 @@ export type PlayerState = Omit<PublicPlayer, "isHost"> & {
 };
 type ReportRecord = { reportId: string; reporterId: string; targetId: string; reason: ReportReason; description: string; createdAt: number };
 type PendingPlay = {
-  card: ButtonCard; actorPlayerId: string; claim: ButtonCardKind; targetPlayerId: string | null; submittedAt: number;
+  card: ButtonCard; actorPlayerId: string; claim: ButtonCardKind;
+  targetPlayerId: string | null; realTargetPlayerId: string | null; submittedAt: number;
   challengerPlayerId: string | null; challengeOutcome: "bluff_caught" | "false_accusation" | null;
   cancelled: boolean; penaltyPlayerId: string | null; challengeResolvedAt: number | null; revealEndsAt: number | null;
 };
@@ -649,12 +650,17 @@ export class RoomOwner {
       const card = state.hand.find((candidate) => candidate.cardId === input.cardId);
       if (!card) throw new LobbyError("CARD_NOT_FOUND");
       const targetId = input.targetPlayerId ?? null;
+      const realTargetId = input.realTargetPlayerId ?? null;
+      const validTarget = (target: string | null) => target !== null && target !== player.playerId &&
+        round.participantOrder.includes(target) && !round.departedPlayerIds.has(target) && round.assignments.has(target);
       if (isTargetedButtonCard(input.claim)) {
-        if (!targetId || targetId === player.playerId || !round.participantOrder.includes(targetId) || round.departedPlayerIds.has(targetId)) throw new LobbyError("INVALID_TARGET");
+        if (!validTarget(targetId)) throw new LobbyError("INVALID_TARGET");
       }
+      if (isTargetedButtonCard(card.kind) !== (realTargetId !== null) || (realTargetId !== null && !validTarget(realTargetId))) throw new LobbyError("INVALID_TARGET");
+      if (card.kind === input.claim && isTargetedButtonCard(card.kind) && realTargetId !== targetId) throw new LobbyError("INVALID_TARGET");
       this.bumpPrivate(round, player.playerId, (current) => ({ ...current, hand: current.hand.filter((candidate) => candidate.cardId !== card.cardId), pendingChoice: null }));
       const now = this.now();
-      round.played = { card, actorPlayerId: player.playerId, claim: input.claim, targetPlayerId: targetId, submittedAt: now, challengerPlayerId: null, challengeOutcome: null, cancelled: false, penaltyPlayerId: null, challengeResolvedAt: null, revealEndsAt: null };
+      round.played = { card, actorPlayerId: player.playerId, claim: input.claim, targetPlayerId: targetId, realTargetPlayerId: realTargetId, submittedAt: now, challengerPlayerId: null, challengeOutcome: null, cancelled: false, penaltyPlayerId: null, challengeResolvedAt: null, revealEndsAt: null };
       round.phase = "challenge";
       round.deadlineAt = now + this.challengeDurationMs(room);
       this.appendPublicEvent(room, roundEvent("CARD_PLAYED", now, { actorPlayerId: player.playerId, targetPlayerId: targetId, claim: input.claim }));
@@ -760,6 +766,9 @@ export class RoomOwner {
     }
     this.resolveCardEffect(room, played.card.kind);
     this.finishTurn(room);
+    // Effect knowledge and hand changes are delivered from the effect lifecycle
+    // itself so timer, challenge, penalty, and departure paths cannot omit them.
+    this.deliverAllPrivate(room);
   }
   private resolveMovement(room: RoomState, actorId: string, movement: number, type: PublicButtonEffect["type"], targetId: string | null) {
     const round = room.serverRound!;
@@ -772,7 +781,10 @@ export class RoomOwner {
     const round = room.serverRound!;
     const played = round.played!;
     const actorId = played.actorPlayerId;
-    const validTarget = isTargetedButtonCard(kind) && played.claim === kind ? played.targetPlayerId : null;
+    const candidateTarget = isTargetedButtonCard(kind) ? played.realTargetPlayerId : null;
+    const validTarget = candidateTarget !== null && candidateTarget !== actorId &&
+      round.participantOrder.includes(candidateTarget) && !round.departedPlayerIds.has(candidateTarget) &&
+      round.assignments.has(candidateTarget) ? candidateTarget : null;
     let effectType: PublicButtonEffect["type"] = "movement";
     const movement = wildMovement ?? movementForCard(kind) ?? 0;
     let targetId = validTarget;
@@ -787,7 +799,7 @@ export class RoomOwner {
       if (targetState?.hand.length) {
         const stolen = round.random.pick(targetState.hand);
         this.bumpPrivate(round, validTarget, (state) => ({ ...state, hand: state.hand.filter((card) => card.cardId !== stolen.cardId) }));
-        this.bumpPrivate(round, actorId, (state) => ({ ...state, hand: [...state.hand, stolen] }));
+        this.bumpPrivate(round, actorId, (state) => ({ ...state, hand: [...state.hand, stolen], cardTransfers: [...state.cardTransfers, { knowledgeId: randomUUID(), sourcePlayerId: validTarget, card: stolen.kind, receivedAt: this.now() }].slice(-8) }));
       }
       effectType = "steal";
     } else if (kind === "INSPECT" && validTarget) {
@@ -797,6 +809,7 @@ export class RoomOwner {
         this.bumpPrivate(round, actorId, (state) => ({ ...state, inspections: [...state.inspections, { knowledgeId: randomUUID(), targetPlayerId: validTarget, card: inspected.kind, inspectedAt: this.now() }].slice(-8) }));
       }
       effectType = "inspect";
+      targetId = null;
     } else if (kind === "REVERSE") {
       round.direction = round.direction === "clockwise" ? "counter_clockwise" : "clockwise";
       effectType = "reverse";
@@ -807,7 +820,7 @@ export class RoomOwner {
       targetId = actorId;
     }
     this.resolveMovement(room, actorId, movement, effectType, targetId);
-    this.recordOutcome(round, { type: "BUTTON_V2_OUTCOME", actorPlayerId: actorId, opponentPlayerId: targetId, outcome: "CARD_RESOLVED", actualCard: kind, claimedCard: played.claim, targeted: validTarget !== null, at: this.now() });
+    this.recordOutcome(round, { type: "BUTTON_V2_OUTCOME", actorPlayerId: actorId, opponentPlayerId: validTarget, outcome: "CARD_RESOLVED", actualCard: kind, claimedCard: played.claim, targeted: validTarget !== null, at: this.now() });
     this.evaluateSecrets(room);
     this.appendPublicEvent(room, roundEvent("EFFECT_RESOLVED", this.now(), { actorPlayerId: actorId, targetPlayerId: targetId, claim: played.claim, movement: round.lastEffect?.movement ?? 0 }));
   }
@@ -951,11 +964,10 @@ export class RoomOwner {
     const round = room.serverRound!;
     const played = round.played!;
     const now = this.now();
-    this.recordOutcome(round, { type: "BUTTON_V2_OUTCOME", actorPlayerId: played.actorPlayerId, opponentPlayerId: played.targetPlayerId, outcome: played.card.kind === played.claim ? "TRUTHFUL" : "BLUFF_SUCCEEDED", actualCard: played.card.kind, claimedCard: played.claim, targeted: isTargetedButtonCard(played.card.kind), at: now });
+    this.recordOutcome(round, { type: "BUTTON_V2_OUTCOME", actorPlayerId: played.actorPlayerId, opponentPlayerId: played.realTargetPlayerId, outcome: played.card.kind === played.claim ? "TRUTHFUL" : "BLUFF_SUCCEEDED", actualCard: played.card.kind, claimedCard: played.claim, targeted: isTargetedButtonCard(played.card.kind), at: now });
     this.appendPublicEvent(room, roundEvent("NO_CHALLENGE", now, { actorPlayerId: played.actorPlayerId, targetPlayerId: played.targetPlayerId, claim: played.claim }));
     this.evaluateSecrets(room);
     this.beginCardEffect(room);
-    this.deliverAllPrivate(room);
   }
   private endButtonRound(room: RoomState) {
     const round = room.serverRound;

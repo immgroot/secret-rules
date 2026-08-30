@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
-  BUTTON_CARD_KINDS, BUTTON_CARD_LABELS, ERROR_MESSAGES, EVENTS, isTargetedButtonCard,
-  type ButtonCard, type ButtonCardKind, type PrivatePlayerRoundState, type PublicPlayer, type PublicRoundState,
+  BUTTON_CARD_LABELS, ERROR_MESSAGES, EVENTS, isTargetedButtonCard,
+  type ButtonCard, type ButtonCardKind, type PrivatePlayerRoundState, type PublicPlayer, type PublicRoundEvent, type PublicRoundState,
 } from "@secret-rules/shared";
 import { useRouter } from "next/navigation.js";
 import { useMultiplayer } from "../../multiplayer/provider.tsx";
@@ -14,7 +14,12 @@ import { GameIcon } from "../icons/game-icon.tsx";
 import { ChatMessages } from "../lobby/chat-panel.tsx";
 import { GameButton, GameModal, PlayerBadge, SecretCard } from "../ui/index.ts";
 import { formatRemainingTime } from "../ui/presentation.ts";
+import { ButtonCardChoice, ClaimCardPicker } from "./button-card.tsx";
+import { currentTurnKey, eventsAfter, latestPrivateEffect, privateEffectIsVisible, shouldNotifyLocalTurn } from "./button-presentation.ts";
 import { GameTable } from "./game-table.tsx";
+import { RealClaimComparison } from "./play-presentation.tsx";
+import { PrivateEffectResultContent } from "./private-effect-result.tsx";
+import { PublicBoardView, type TableNotice } from "./public-board.tsx";
 
 function useServerClock(round: PublicRoundState) {
   const [now, setNow] = useState(round.serverNow);
@@ -115,8 +120,19 @@ function MatchComplete({ round, players, host, requestLeave }: { round: PublicRo
   return <section className="match-complete"><p className="eyebrow">ALL {round.totalRounds} ROUNDS ARE IN.</p><h2>MATCH COMPLETE</h2><div className="match-winners">{winnerIds.map((id) => { const profile = participant(round, players, id); return <PlayerBadge key={id} name={profile.name} avatarId={profile.avatarId} tone={profile.tone} />; })}<strong>{names.join(" & ")} {names.length > 1 ? "WIN" : "WINS"}</strong><span>{round.matchResult?.finalStandings[0]?.score ?? 0} POINTS</span></div><Standings round={round} players={players} final /><RoundScores round={round} players={players} /><details className="final-rule-reveal"><summary>VIEW FINAL ROUND SECRETS</summary><RuleRevealCards round={round} /></details><div className="match-complete__actions">{host && <GameButton disabled={pending} onClick={() => void client.returnToLobby()}>RETURN TO LOBBY</GameButton>}<GameButton variant="secondary" onClick={requestLeave}>LEAVE ROOM</GameButton>{!host && <p>THE HOST CAN RETURN THIS ROOM TO THE LOBBY.</p>}</div></section>;
 }
 
-function CardFace({ card, selected, onClick, disabled, penalty = false }: { card: ButtonCard; selected?: boolean; onClick: () => void; disabled: boolean; penalty?: boolean }) {
-  return <button className="button-card" data-kind={card.kind} data-selected={selected} disabled={disabled} onClick={onClick} aria-pressed={selected}><span>{penalty ? "DISCARD" : selected ? "REAL CARD" : "PRIVATE CARD"}</span><strong>{BUTTON_CARD_LABELS[card.kind]}</strong><small>{card.kind.replaceAll("_", " ")}</small></button>;
+function CardFace({ card, selected = false, onClick, disabled, penalty = false }: { card: ButtonCard; selected?: boolean; onClick: () => void; disabled: boolean; penalty?: boolean }) {
+  return <ButtonCardChoice kind={card.kind} purpose={penalty ? "discard" : "real"} selected={selected} disabled={disabled} onClick={onClick} />;
+}
+
+export function PrivateEffectResult({ state, players }: { state: PrivatePlayerRoundState; players: readonly PublicPlayer[] }) {
+  const latest = latestPrivateEffect(state);
+  const [dismissedId, setDismissedId] = useState<string | null>(null);
+  if (!privateEffectIsVisible(latest, dismissedId)) return null;
+  const dismiss = () => setDismissedId(latest.id);
+  return <GameModal open title={latest.kind === "inspect" ? "INSPECT RESULT" : "CARD STOLEN"} description="PRIVATE · ONLY YOU CAN SEE THIS" className="private-effect-result" dismissible={false} onClose={dismiss}>
+    <PrivateEffectResultContent effect={latest} players={players} />
+    <GameButton onClick={dismiss}>GOT IT</GameButton>
+  </GameModal>;
 }
 
 function PrivateActionPanel({ round, state, players, selfId, disabled }: { round: PublicRoundState; state: PrivatePlayerRoundState; players: readonly PublicPlayer[]; selfId: string; disabled: boolean }) {
@@ -125,49 +141,83 @@ function PrivateActionPanel({ round, state, players, selfId, disabled }: { round
   const selfPlayer = players.find((player) => player.playerId === selfId);
   const mobilePov = selfPlayer ? <i className="mobile-pov-label">YOUR SEAT · {selfPlayer.displayName.toUpperCase()} · FRONT / </i> : null;
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [claim, setClaim] = useState<ButtonCardKind>("PLUS_ONE");
-  const [targetId, setTargetId] = useState("");
+  const [claim, setClaim] = useState<ButtonCardKind | null>(null);
+  const [realTargetId, setRealTargetId] = useState("");
+  const [claimTargetId, setClaimTargetId] = useState("");
+  const [selectionTurnKey, setSelectionTurnKey] = useState<string | null>(null);
   const isTurn = round.phase === "turn_action" && round.publicGameState.currentPlayerId === selfId;
-  const selected = state.hand.find((card) => card.cardId === selectedCardId) ?? null;
-  const validTargets = players.filter((player) => player.playerId !== selfId && player.connected);
-  async function play() {
-    if (!selected) return;
-    const targeted = isTargetedButtonCard(claim);
-    if (targeted && !targetId) return;
-    sound.play("cardPlay");
-    const ok = await client.playCard({ cardId: selected.cardId, claim, ...(targeted ? { targetPlayerId: targetId } : {}) });
-    if (ok) { setSelectedCardId(null); setTargetId(""); }
+  const actionTurnKey = currentTurnKey(round);
+  const selectionCurrent = actionTurnKey !== null && selectionTurnKey === actionTurnKey;
+  const selected = state.hand.find((card) => card.cardId === (selectionCurrent ? selectedCardId : null)) ?? null;
+  const validTargets = players.filter((player) => player.role === "player" && player.playerId !== selfId);
+  const realTargeted = selected ? isTargetedButtonCard(selected.kind) : false;
+  const claimTargeted = claim ? isTargetedButtonCard(claim) : false;
+  const readyToPlay = Boolean(selected && claim && (!realTargeted || realTargetId) && (!claimTargeted || claimTargetId));
+  const flow = !selected ? "real" : realTargeted && !realTargetId ? "real-target" : !claim ? "claim" : claimTargeted && !claimTargetId ? "claim-target" : "confirm";
+
+  function selectRealCard(cardId: string) {
+    sound.play("cardSlide");
+    setSelectionTurnKey(actionTurnKey);
+    setSelectedCardId(cardId);
+    setClaim(null);
+    setRealTargetId("");
+    setClaimTargetId("");
   }
-  if (state.pendingChoice?.kind === "penalty_discard") return <aside className="private-action-panel private-action-panel--urgent"><header><span>{mobilePov}PENALTY</span><strong>CHOOSE ONE EXTRA CARD TO DISCARD</strong><small>This card stays private and will not be replaced.</small></header><div className="private-hand">{state.hand.map((card) => <CardFace key={card.cardId} card={card} penalty disabled={disabled} onClick={() => void client.penaltyDiscard(card.cardId)} />)}</div></aside>;
-  if (state.pendingChoice?.kind === "wild_value") return <aside className="private-action-panel private-action-panel--urgent"><header><span>{mobilePov}WILD · PRIVATE CHOICE</span><strong>CHOOSE THE MOVEMENT</strong></header><div className="wild-options">{([1, 2, -1, -2] as const).map((movement) => <GameButton key={movement} disabled={disabled} onClick={() => void client.chooseWild(movement)}>{movement > 0 ? `+${movement}` : movement}</GameButton>)}</div></aside>;
+
+  function selectClaim(kind: ButtonCardKind) {
+    sound.play("cardSlide");
+    setClaim(kind);
+    if (!isTargetedButtonCard(kind)) setClaimTargetId("");
+    else if (selected?.kind === kind && realTargetId) setClaimTargetId(realTargetId);
+  }
+
+  async function play() {
+    if (!selected || !claim || !readyToPlay) return;
+    const ok = await client.playCard({
+      cardId: selected.cardId,
+      claim,
+      ...(realTargeted ? { realTargetPlayerId: realTargetId } : {}),
+      ...(claimTargeted ? { targetPlayerId: claimTargetId } : {}),
+    });
+    if (ok) { setSelectedCardId(null); setClaim(null); setRealTargetId(""); setClaimTargetId(""); setSelectionTurnKey(null); }
+  }
+
+  if (state.pendingChoice?.kind === "penalty_discard") return <aside className="private-action-panel private-action-panel--urgent"><header><span>{mobilePov}PENALTY · PRIVATE</span><strong>CHOOSE ONE EXTRA CARD TO DISCARD</strong><small>This card stays private and will not be replaced.</small></header><div className="private-hand">{state.hand.map((card) => <CardFace key={card.cardId} card={card} penalty disabled={disabled} onClick={() => void client.penaltyDiscard(card.cardId)} />)}</div></aside>;
+  if (state.pendingChoice?.kind === "wild_value") return <aside className="private-action-panel private-action-panel--urgent"><header><span>{mobilePov}WILD · PRIVATE CHOICE</span><strong>YOUR CALL.</strong><small>Choose +1, +2, -1, or -2. The Button moves by exactly your server-validated choice.</small></header><div className="wild-options">{([1, 2, -1, -2] as const).map((movement) => <GameButton key={movement} disabled={disabled} onClick={() => void client.chooseWild(movement)}>{movement > 0 ? `+${movement}` : movement}</GameButton>)}</div></aside>;
   if (state.pendingChoice?.kind === "target_vote") return <aside className="private-action-panel private-action-panel--vote"><header><span>{mobilePov}PRIVATE VOTE</span><strong>END THE ROUND OR CONTINUE?</strong><small>Other players cannot see your choice.</small></header><div className="wild-options"><GameButton disabled={disabled || state.pendingChoice.choice !== null} onClick={() => { sound.play("vote"); void client.voteOnTarget("end"); }}>END ROUND</GameButton><GameButton variant="secondary" disabled={disabled || state.pendingChoice.choice !== null} onClick={() => { sound.play("vote"); void client.voteOnTarget("continue"); }}>LAST CHANCE</GameButton></div>{state.pendingChoice.choice && <p>VOTE LOCKED: {state.pendingChoice.choice.toUpperCase()}</p>}</aside>;
-  return <aside className="private-action-panel" data-active={isTurn}><header><span>{mobilePov}{isTurn ? "YOUR TURN" : "YOUR PRIVATE HAND"}</span><strong>{isTurn ? selected ? "WHAT DO YOU CLAIM YOU’RE PLAYING?" : "CHOOSE YOUR REAL CARD" : `${state.hand.length} CARDS`}</strong><small>{isTurn ? "Your real selection never leaves your private state." : "Wait for your seat to light up."}</small></header><div className="private-hand">{state.hand.map((card) => <CardFace key={card.cardId} card={card} selected={card.cardId === selectedCardId} disabled={disabled || !isTurn} onClick={() => setSelectedCardId(card.cardId)} />)}</div>
-    {isTurn && selected && <div className="claim-builder"><label>PUBLIC CLAIM<select value={claim} onChange={(event) => { const next = event.target.value as ButtonCardKind; setClaim(next); if (!isTargetedButtonCard(next)) setTargetId(""); }}>{BUTTON_CARD_KINDS.map((kind) => <option key={kind} value={kind}>{BUTTON_CARD_LABELS[kind]} · {kind.replaceAll("_", " ")}</option>)}</select></label>{isTargetedButtonCard(claim) && <label>CLAIM TARGET<select required value={targetId} onChange={(event) => setTargetId(event.target.value)}><option value="">CHOOSE PLAYER</option>{validTargets.map((player) => <option key={player.playerId} value={player.playerId}>{player.displayName.toUpperCase()}</option>)}</select></label>}<GameButton disabled={disabled || isTargetedButtonCard(claim) && !targetId} onClick={() => void play()}>PLAY FACE DOWN</GameButton></div>}
+
+  return <aside className="private-action-panel" data-active={isTurn} data-flow={isTurn ? flow : "waiting"}>
+    <header className="private-action-panel__heading"><span>{mobilePov}{isTurn ? "YOUR TURN · PRIVATE DECISION" : "YOUR PRIVATE HAND"}</span><strong>{isTurn ? !selected ? "CHOOSE THE CARD YOU’RE REALLY PLAYING" : realTargeted && !realTargetId ? "CHOOSE ITS REAL TARGET" : "WHAT DO YOU CLAIM YOU PLAYED?" : `${state.hand.length} CARDS`}</strong><small>{isTurn ? "Your real card and real target stay private until game consequences legitimately reveal them." : "Wait for your seat and turn banner to light up."}</small></header>
+    <section className="real-card-stage" aria-labelledby="real-card-heading"><div className="private-stage-label"><span id="real-card-heading">{selected ? `YOUR HAND · ${Math.max(0, state.hand.length - 1)} OTHER CARDS` : "YOUR PRIVATE HAND"}</span>{selected && <b>SELECTED REAL CARD · PRIVATE</b>}</div><div className="private-hand">{state.hand.map((card) => <CardFace key={card.cardId} card={card} selected={card.cardId === selectedCardId} disabled={disabled || !isTurn} onClick={() => selectRealCard(card.cardId)} />)}</div></section>
+    {isTurn && selected && realTargeted && <section className="target-picker target-picker--private" aria-labelledby="real-target-picker-heading"><div><span>STAGE A · PRIVATE EFFECT TARGET</span><strong id="real-target-picker-heading">WHO DOES {BUTTON_CARD_LABELS[selected.kind]} AFFECT?</strong><small>ONLY YOUR CLIENT AND THE SERVER RECEIVE THIS.</small></div><div role="group" aria-label={`Privately choose the real target for ${BUTTON_CARD_LABELS[selected.kind]}`}>{validTargets.map((player) => <button type="button" key={player.playerId} data-player-id={player.playerId} data-selected={realTargetId === player.playerId} aria-pressed={realTargetId === player.playerId} disabled={disabled} onClick={() => { sound.play("uiClick"); setRealTargetId(player.playerId); if (claim === selected.kind) setClaimTargetId(player.playerId); }}><PlayerBadge name={player.displayName} avatarId={player.avatarId} tone={player.playerColor ?? "spectator"} compact /><span>{realTargetId === player.playerId ? "REAL TARGET SELECTED" : player.connected ? "SELECT PRIVATELY" : "RECONNECTING"}</span></button>)}</div></section>}
+    {isTurn && selected && (!realTargeted || realTargetId) && <section className="claim-stage" aria-labelledby="claim-stage-heading"><div className="claim-stage__heading"><div><span>STAGE B · PUBLIC STORY</span><strong id="claim-stage-heading">WHAT DO YOU CLAIM YOU PLAYED?</strong></div><div className="real-card-summary"><span>REAL CARD · PRIVATE</span><strong>{BUTTON_CARD_LABELS[selected.kind]}</strong></div></div><ClaimCardPicker value={claim} disabled={disabled} onSelect={selectClaim} /></section>}
+    {isTurn && selected && claim && claimTargeted && <section className="target-picker target-picker--public" aria-labelledby="claim-target-picker-heading"><div><span>PUBLIC CLAIM TARGET</span><strong id="claim-target-picker-heading">WHO DO YOU SAY IT TARGETS?</strong><small>THE WHOLE TABLE WILL SEE THIS CLAIM.</small></div><div role="group" aria-label={`Choose the public claim target for ${BUTTON_CARD_LABELS[claim]}`}>{validTargets.map((player) => <button type="button" key={player.playerId} data-player-id={player.playerId} data-selected={claimTargetId === player.playerId} aria-pressed={claimTargetId === player.playerId} disabled={disabled || selected.kind === claim} onClick={() => { sound.play("uiClick"); setClaimTargetId(player.playerId); }}><PlayerBadge name={player.displayName} avatarId={player.avatarId} tone={player.playerColor ?? "spectator"} compact /><span>{claimTargetId === player.playerId ? "CLAIM TARGET SELECTED" : "SELECT PUBLICLY"}</span></button>)}</div></section>}
+    {isTurn && selected && claim && <RealClaimComparison
+      realCard={selected.kind}
+      claim={claim}
+      realTargetName={realTargetId ? players.find((player) => player.playerId === realTargetId)?.displayName ?? "TARGET" : null}
+      claimTargetName={claimTargetId ? players.find((player) => player.playerId === claimTargetId)?.displayName ?? "TARGET" : null}
+      action={<GameButton disabled={disabled || !readyToPlay} onClick={() => void play()}>PLAY FACE-DOWN <GameIcon name="play" size={16} /></GameButton>}
+    />}
     {isTurn && round.publicGameState.basicActionAvailable && <GameButton className="basic-button-action" variant="secondary" disabled={disabled} onClick={() => void client.basicButton()}>BASIC BUTTON +1</GameButton>}
     {state.inspections.length > 0 && <details className="inspection-log"><summary>PRIVATE INSPECTIONS · {state.inspections.length}</summary>{state.inspections.map((item) => <p key={item.knowledgeId}>{players.find((player) => player.playerId === item.targetPlayerId)?.displayName ?? "PLAYER"}: <strong>{BUTTON_CARD_LABELS[item.card]}</strong></p>)}</details>}
   </aside>;
 }
 
-function PublicBoard({ round, players, selfId, spectator, disabled }: { round: PublicRoundState; players: readonly PublicPlayer[]; selfId: string | null; spectator: boolean; disabled: boolean }) {
-  const { client } = useMultiplayer();
-  const sound = useSound();
-  const game = round.publicGameState;
-  const claim = game.currentClaim;
-  const actor = claim ? participant(round, players, claim.actorPlayerId).name : null;
-  const target = claim?.targetPlayerId ? participant(round, players, claim.targetPlayerId).name : null;
-  const canChallenge = round.phase === "challenge" && Boolean(selfId && claim && claim.actorPlayerId !== selfId) && !spectator;
-  const challenge = game.challenge;
-  return <section className="v2-board" aria-label="Public Button V2 state">
-    <div className="v2-deck"><span>DRAW DECK</span><i aria-hidden="true" /><strong>{game.deckRemaining}</strong></div><div className="v2-discard"><span>DISCARD</span><i aria-hidden="true" /><strong>{game.discardCount}</strong></div>
-    <div className="v2-counter"><span>BUTTON</span><strong aria-live="polite">{game.counter}</strong><small>EXACT TARGET <b>{game.target}</b></small><button className="v2-red-button" tabIndex={-1} aria-hidden="true"><i /></button></div>
-    <div className="v2-direction" data-direction={game.direction}><span>↻</span>{game.direction.replace("_", " ").toUpperCase()}</div>
-    <div className="v2-play-zone" data-active={Boolean(claim)}>{claim ? <><div className="face-down-card" data-revealed={Boolean(challenge?.revealedCard)}><span>{challenge?.revealedCard ? BUTTON_CARD_LABELS[challenge.revealedCard] : "?"}</span></div><p><b>{actor?.toUpperCase()}</b> CLAIMS <strong>{BUTTON_CARD_LABELS[claim.claim]}</strong>{target && <> → <b>{target.toUpperCase()}</b></>}</p>{challenge?.outcome && <div className="challenge-result" data-outcome={challenge.outcome}><strong>{challenge.outcome === "bluff_caught" ? "BLUFF CAUGHT" : "FALSE ACCUSATION"}</strong><span>ACTUAL {challenge.revealedCard ? BUTTON_CARD_LABELS[challenge.revealedCard] : "—"} · CLAIM {BUTTON_CARD_LABELS[claim.claim]}</span></div>}</> : <><div className="face-down-card face-down-card--empty"><span>?</span></div><p>WAITING FOR A CARD</p></>}
-      {canChallenge && <GameButton className="call-bluff" variant="danger" disabled={disabled} onClick={() => { sound.play("callBluff"); void client.callBluff(); }}>CALL BLUFF</GameButton>}
-    </div>
-    {game.lastEffect && <div className="v2-effect" role="status"><span>{game.lastEffect.type.replaceAll("_", " ").toUpperCase()}</span><strong>{game.lastEffect.movement === null ? "RESOLVED" : signed(game.lastEffect.movement)}</strong><small>{game.lastEffect.counterBefore} → {game.lastEffect.counterAfter}</small></div>}
-    {game.targetSecured && <div className="target-secured"><strong>TARGET SECURED</strong><span>THE COUNTER IS LOCKED AT {game.target}</span></div>}
-    {round.phase === "last_chance" && <div className="last-chance-banner">LAST CHANCE · {game.lastChanceTurnsRemaining} TURNS REMAIN</div>}
-  </section>;
+function publicEventAction(event: PublicRoundEvent) {
+  switch (event.type) {
+    case "CARD_PLAYED": return `PLAYED A CARD · CLAIMED ${event.claim ? BUTTON_CARD_LABELS[event.claim] : "—"}`;
+    case "CHALLENGE_CALLED": return "CALLED BLUFF";
+    case "BLUFF_CAUGHT": return "BLUFF CAUGHT";
+    case "FALSE_ACCUSATION": return "FALSE ACCUSATION";
+    case "NO_CHALLENGE": return "THE TABLE TRUSTED IT";
+    case "EFFECT_RESOLVED": return `RESOLVED A CARD${event.movement ? ` · ${signed(event.movement)}` : ""}`;
+    case "TARGET_SECURED": return "HIT THE EXACT TARGET";
+    case "TURN_STARTED": return "STARTED THEIR TURN";
+    case "TURN_SKIPPED": return "LOST THEIR TURN";
+    case "PENALTY_DISCARDED": return "DISCARDED A PENALTY CARD";
+    default: return event.type.replaceAll("_", " ");
+  }
 }
 
 export function GameShell() {
@@ -184,22 +234,64 @@ function ActiveGameShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [selected, setSelected] = useState<PublicPlayer | null>(null);
+  const [localTurnNotice, setLocalTurnNotice] = useState<string | null>(null);
+  const [tableNotice, setTableNotice] = useState<TableNotice | null>(null);
   const round = room!.publicRound!;
   const [helpOpen, setHelpOpen] = useState(round.roundNumber === 1 && round.phase === "rule_ack");
   const now = useServerClock(round);
   const me = room!.players.find((player) => player.playerId === playerId);
-  const players = room!.players.filter((player) => player.role === "player");
+  const players = useMemo(() => room!.players.filter((player) => player.role === "player"), [room]);
   const spectator = me?.role === "spectator";
   const remainingMs = round.publicTimer ? Math.max(0, round.publicTimer.deadlineAt - now) : 0;
   const timerTension = remainingMs <= 3_000 ? "critical" : remainingMs <= 7_000 ? "urgent" : "normal";
   const countdown = round.countdownEndsAt ? Math.max(0, Math.ceil((round.countdownEndsAt - now) / 1000)) : 0;
   const acknowledged = useMemo(() => new Set(round.publicPlayerStatuses.filter((status) => status.acknowledged).map((status) => status.playerId)), [round.publicPlayerStatuses]);
+  const turnKey = currentTurnKey(round);
+  const previousTurnKey = useRef(turnKey);
+  const previousPublicEventId = useRef(round.publicEvents.at(-1)?.eventId ?? null);
+  const localTurnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tableNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousPhase = useRef(round.phase);
   const previousEffect = useRef(round.publicGameState.lastEffect?.effectId ?? null);
   useEffect(() => {
+    if (shouldNotifyLocalTurn(previousTurnKey.current, turnKey, round.publicGameState.currentPlayerId, playerId)) {
+      sound.play("yourTurn");
+      setLocalTurnNotice(turnKey);
+      if (localTurnTimer.current) clearTimeout(localTurnTimer.current);
+      localTurnTimer.current = setTimeout(() => setLocalTurnNotice(null), 1_800);
+    }
+    previousTurnKey.current = turnKey;
+  }, [playerId, round.publicGameState.currentPlayerId, sound, turnKey]);
+  useEffect(() => {
+    const latest = round.publicEvents.at(-1)?.eventId ?? null;
+    const unseen = eventsAfter(round.publicEvents, previousPublicEventId.current);
+    for (const event of unseen) {
+      if (event.type === "CARD_PLAYED") sound.play("cardPlay");
+      if (event.type === "CHALLENGE_CALLED") sound.play("callBluff");
+      if (event.type === "BLUFF_CAUGHT") { sound.play("cardFlip"); sound.play("bluffCaught"); }
+      if (event.type === "FALSE_ACCUSATION") { sound.play("cardFlip"); sound.play("falseAccusation"); }
+      if (event.type === "TARGET_SECURED") sound.play("targetReached");
+      if (event.type === "NO_CHALLENGE") {
+        sound.play("cardSlide");
+        setTableNotice({ title: "THE TABLE TRUSTS IT", detail: "THE REAL CARD STAYS HIDDEN.", kind: "trust" });
+        if (tableNoticeTimer.current) clearTimeout(tableNoticeTimer.current);
+        tableNoticeTimer.current = setTimeout(() => setTableNotice(null), 1_650);
+      }
+      if (event.type === "TURN_SKIPPED" && event.actorPlayerId) {
+        const name = participant(round, players, event.actorPlayerId).name.toUpperCase();
+        setTableNotice({ title: `${name} · SKIPPED`, detail: "ONE TURN CONSUMED · PLAY CONTINUES", kind: "skip" });
+        if (tableNoticeTimer.current) clearTimeout(tableNoticeTimer.current);
+        tableNoticeTimer.current = setTimeout(() => setTableNotice(null), 1_800);
+      }
+    }
+    previousPublicEventId.current = latest;
+  }, [players, round, sound]);
+  useEffect(() => () => {
+    if (localTurnTimer.current) clearTimeout(localTurnTimer.current);
+    if (tableNoticeTimer.current) clearTimeout(tableNoticeTimer.current);
+  }, []);
+  useEffect(() => {
     if (previousPhase.current !== round.phase) {
-      if (round.phase === "challenge_reveal") sound.play(round.publicGameState.challenge?.outcome === "bluff_caught" ? "bluffCaught" : "falseAccusation");
-      if (round.phase === "target_vote") sound.play("targetReached");
       if (round.phase === "round_reveal") sound.play("secretReveal");
       if (round.phase === "match_complete") sound.play("matchComplete");
       previousPhase.current = round.phase;
@@ -211,22 +303,24 @@ function ActiveGameShell() {
       else sound.play("counterTick");
       previousEffect.current = effect.effectId;
     }
-  }, [round.phase, round.publicGameState.challenge?.outcome, round.publicGameState.lastEffect, sound]);
+  }, [round.phase, round.publicGameState.lastEffect, sound]);
   async function leave() { if (await client.leave()) router.push("/"); }
-  const recent = round.publicEvents.slice(-4);
-  const eventFeed = <aside className="public-feed" aria-label="Recent table actions" aria-live="polite"><span className="public-feed__title">TABLE LOG</span>{recent.map((event) => <span key={event.eventId}><b>{event.actorPlayerId ? participant(round, players, event.actorPlayerId).name.toUpperCase() : "TABLE"}</b> {event.type.replaceAll("_", " ")}</span>)}</aside>;
+  const recent = round.publicEvents.slice(-5);
+  const eventFeed = <aside className="public-feed" aria-label="Recent table actions" aria-live="polite"><span className="public-feed__title">TABLE LOG</span>{recent.map((event) => <span key={event.eventId}><b>{event.actorPlayerId ? participant(round, players, event.actorPlayerId).name.toUpperCase() : "TABLE"}</b> {publicEventAction(event)}</span>)}</aside>;
   const showError = error !== null;
   return <div className="game-shell game-shell--v2" data-reduce-motion={reducedMotion} data-chat-open={chatOpen}>
     <a className="skip-link" href="#private-actions">Skip to your cards</a>
     <header className="game-hud"><FullLogo className="game-hud__logo" /><span className="game-hud__round">ROUND {round.roundNumber} / {round.totalRounds}</span><div className="game-hud__tools"><span className="game-hud__timer" data-tension={timerTension}><GameIcon name="timer" size={17} />{round.publicTimer ? formatRemainingTime(round.publicTimer.deadlineAt, now) : round.phase.replaceAll("_", " ").toUpperCase()}</span><button aria-label="Game menu" onClick={() => setMenuOpen(true)}><GameIcon name="settings" /></button></div></header>
     <GameplayChat open={chatOpen} setOpen={setChatOpen} />
-    <main className="game-stage"><GameTable players={players} playerId={playerId} round={round} acknowledgedPlayerIds={acknowledged} choosePlayer={setSelected} eventFeed={eventFeed}><PublicBoard round={round} players={players} selfId={playerId} spectator={Boolean(spectator)} disabled={pending || connection !== "connected"} /></GameTable>
+    <main className="game-stage"><GameTable players={players} playerId={playerId} round={round} acknowledgedPlayerIds={acknowledged} choosePlayer={setSelected} eventFeed={eventFeed}><PublicBoardView round={round} players={players} selfId={playerId} spectator={Boolean(spectator)} disabled={pending || connection !== "connected"} now={now} tableNotice={tableNotice} onCallBluff={() => { sound.play("callBluff"); void client.callBluff(); }} /></GameTable>
+      {localTurnNotice && <div key={localTurnNotice} className="local-turn-notice" role="status"><span>THE TABLE IS WAITING.</span><strong>YOUR TURN</strong></div>}
       {helpOpen && round.roundNumber === 1 && round.phase === "rule_ack" && !spectator && <ButtonPrimer close={() => setHelpOpen(false)} />}
       {!helpOpen && round.phase === "rule_ack" && <RuleDeal round={round} privateRound={privateRound} spectator={Boolean(spectator)} />}
       {round.phase === "countdown" && <div className="countdown" role="status"><small>CARDS READY. STORIES OPTIONAL.</small><span key={countdown}>{countdown || "GO"}</span></div>}
       {round.phase === "round_reveal" && <RoundReveal round={round} players={players} host={room!.hostPlayerId === playerId} />}
       {round.phase === "match_complete" && <MatchComplete round={round} players={players} host={room!.hostPlayerId === playerId} requestLeave={() => setLeaving(true)} />}
       {privateRound && !spectator && !["rule_ack", "round_reveal", "match_complete"].includes(round.phase) && <><div id="private-actions"><PrivateActionPanel round={round} state={privateRound} players={players} selfId={playerId!} disabled={pending || connection !== "connected"} /></div><SecretDrawer state={privateRound} /></>}
+      {privateRound && !spectator && <PrivateEffectResult state={privateRound} players={players} />}
       {spectator && round.phase !== "rule_ack" && <span className="spectator-chip"><GameIcon name="players" size={15} /> SPECTATING · PUBLIC VIEW ONLY</span>}
       {showError && <div className="game-error" role="alert">{ERROR_MESSAGES[error.code]}</div>}
     </main>

@@ -518,7 +518,7 @@ test("private five-card hands and Secrets reach only their authenticated owner a
     assert.equal(own.playerId, [host, ...joins][index]!.session.playerId);
     assert.equal(own.privateProgress.status, "in_progress");
     const publicWire = JSON.stringify(peer.states.at(-1));
-    assert.equal(/secretRule|privateProgress|inspections|pendingChoice/.test(publicWire), false);
+    assert.equal(/secretRule|privateProgress|inspections|cardTransfers|pendingChoice/.test(publicWire), false);
     for (const card of own.hand) assert.equal(publicWire.includes(card.cardId), false);
   }
   const original = c.privateStates.at(-1)!;

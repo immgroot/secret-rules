@@ -9,9 +9,19 @@ const ui = localFont({ src: "../styles/fonts/DMSans-Variable.ttf", weight: "100 
 const secret = localFont({ src: "../styles/fonts/IBMPlexMono-Medium.ttf", weight: "500", variable: "--font-secret", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "SECRET RULES — Same challenge. Different rules.",
-  description: "A browser party game for 4–10 friends. Same challenge. Different rules. Create a room and play The Button.",
-  icons: { icon: "/brand/favicon.svg" },
+  title: "SECRET RULES",
+  description: "A 4–10 player online browser party game about private objectives, bluffing, accusations, and chaos.",
+  icons: {
+    icon: [
+      { url: "/brand/favicon.svg", type: "image/svg+xml" },
+      { url: "/brand/favicon-16.png", type: "image/png", sizes: "16x16" },
+      { url: "/brand/favicon-32.png", type: "image/png", sizes: "32x32" },
+      { url: "/brand/secret-rules-app-icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/brand/secret-rules-app-icon.png", type: "image/png", sizes: "512x512" },
+    ],
+    shortcut: "/brand/favicon.svg",
+    apple: [{ url: "/brand/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
+  },
   robots: { index: false, follow: false },
 };
 

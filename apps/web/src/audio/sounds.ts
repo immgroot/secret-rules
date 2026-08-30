@@ -9,6 +9,7 @@ export const soundEvents = {
   cardSlide: { channel: "ui", frequency: 370, end: 260, duration: 0.055 },
   cardPlay: { channel: "demo", frequency: 360, end: 210, duration: 0.08 },
   cardDraw: { channel: "demo", frequency: 240, end: 420, duration: 0.07 },
+  yourTurn: { channel: "demo", frequency: 520, end: 790, duration: 0.12 },
   buttonPress: { channel: "demo", frequency: 110, end: 65, duration: 0.11 },
   callBluff: { channel: "demo", frequency: 180, end: 520, duration: 0.16 },
   bluffCaught: { channel: "demo", frequency: 130, end: 70, duration: 0.25 },

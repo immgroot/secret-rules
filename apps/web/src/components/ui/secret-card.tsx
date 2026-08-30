@@ -27,8 +27,11 @@ export function SecretCard({ rule, ownerLabel, tone = "paper", interactive = fal
   const [revealed, setRevealed] = useState(initiallyRevealed);
   const sound = useSound();
   const contentId = useId();
+  const normalizedRule = rule.replace(/\s+/g, " ").trim();
+  const longestWord = normalizedRule.split(" ").reduce((longest, word) => Math.max(longest, word.length), 0);
+  const copySize = normalizedRule.length > 42 || longestWord > 13 ? "long" : normalizedRule.length > 22 || longestWord > 10 ? "medium" : "short";
   const labels = kind === "information" ? { title: "PRIVATE INFORMATION", overline: "ONLY YOU KNOW THIS", whisper: "What you do with it is up to you.", code: "PI.", button: "INFO" } : kind === "ability" ? { title: "SECRET ABILITY", overline: "ONE PRIVATE ADVANTAGE", whisper: "Keep this to yourself.", code: "SA.", button: "ABILITY" } : { title: "SECRET RULE", overline: "FOR YOUR EYES ONLY", whisper: "Keep this to yourself.", code: "SR.", button: "RULE" };
-  return <article className={`secret-card secret-card--${tone} secret-card--${kind} secret-card--${variant} ${className}`} data-inspected={inspected} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave} aria-label={`${example ? "Example secret" : labels.title} card for ${ownerLabel}`}>
+  return <article className={`secret-card secret-card--${tone} secret-card--${kind} secret-card--${variant} secret-card--copy-${copySize} ${className}`} data-copy-size={copySize} data-inspected={inspected} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave} aria-label={`${example ? "Example secret" : labels.title} card for ${ownerLabel}`}>
     <header className="secret-card__header"><GameIcon name="secret" size={20} /><span>{labels.title}</span><span className="secret-card__number" aria-hidden="true">{labels.code}</span></header>
     <div id={contentId} className="secret-card__body" aria-live={interactive ? "polite" : "off"}>
       {revealed ? <div key="front" className="secret-card__face">{variant === "standard" && <p className="secret-card__overline">{labels.overline}</p>}<p className="secret-card__rule">{rule}</p><p className="secret-card__whisper">{variant === "deal" ? "Don’t let them know why." : labels.whisper}</p></div> : <div key="back" className="secret-card__face secret-card__cover"><LogoMark /><p>A LITTLE<br />SECRET.</p><span>Big consequences.</span></div>}

@@ -61,6 +61,7 @@ export type SecretRule = z.infer<typeof SecretRuleSchema>;
 
 export const PrivateProgressSchema = z.strictObject({ status: RuleProgressStatusSchema, current: z.number().int().nonnegative().nullable(), target: z.number().int().positive().nullable(), summary: z.string().min(1).max(120) });
 export const PrivateInspectionSchema = z.strictObject({ knowledgeId: z.uuid(), targetPlayerId: z.uuid(), card: ButtonCardKindSchema, inspectedAt: z.number().int().nonnegative() });
+export const PrivateCardTransferSchema = z.strictObject({ knowledgeId: z.uuid(), sourcePlayerId: z.uuid(), card: ButtonCardKindSchema, receivedAt: z.number().int().nonnegative() });
 export const PrivatePendingChoiceSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("penalty_discard") }),
   z.strictObject({ kind: z.literal("wild_value") }),
@@ -70,7 +71,8 @@ export const PrivatePlayerRoundStateSchema = z.strictObject({
   roundId: z.uuid(), roundNumber: z.number().int().positive(), miniGameId: z.string().min(2).max(64).regex(/^[a-z0-9-]+$/), playerId: z.uuid(), revision: z.number().int().positive(),
   hand: z.array(ButtonCardSchema).max(24), secretRule: SecretRuleSchema,
   privateProgress: PrivateProgressSchema, privateTargetPlayerId: z.uuid().nullable(), acknowledgedAt: z.number().int().nonnegative().nullable(),
-  inspections: z.array(PrivateInspectionSchema).max(8), pendingChoice: PrivatePendingChoiceSchema.nullable(),
+  inspections: z.array(PrivateInspectionSchema).max(8), cardTransfers: z.array(PrivateCardTransferSchema).max(8),
+  pendingChoice: PrivatePendingChoiceSchema.nullable(),
 });
 export type PrivatePlayerRoundState = z.infer<typeof PrivatePlayerRoundStateSchema>;
 

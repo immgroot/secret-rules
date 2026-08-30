@@ -10,7 +10,7 @@ identity, phase, ownership, deadline and rate-limit authorization.
 | --- | --- |
 | `game:start` | Host starts after 4–10 connected active players are ready |
 | `round:acknowledgeRule` | Owner confirms receipt of their private Secret |
-| `button:playCard` | Current player supplies owned card ID, public claim and required public target |
+| `button:playCard` | Current player supplies owned card ID, public claim/claim target and any required private real-effect target |
 | `button:callBluff` | Eligible opponent attempts the first challenge |
 | `button:penaltyDiscard` | Punished player chooses one owned remaining card |
 | `button:wildChoice` | Wild owner chooses +1, +2, -1 or -2 |
@@ -37,10 +37,11 @@ An active player separately receives only their own private state:
 - five-card hand and subsequent private hand mutations;
 - their Secret Rule, with completion masked until reveal;
 - their own Inspect knowledge;
+- their own stolen-card receipt knowledge;
 - their pending penalty, Wild or target-vote choice;
 - independent monotonically increasing private revision.
 
-Unchallenged actual cards, shuffled order, STEAL/penalty identities, other hands,
+Unchallenged actual cards, private real targets, shuffled order, STEAL/penalty identities, other hands,
 other Secrets, other vote choices, relationship graph, random seed, resume token,
 password digest and report details never enter a public broadcast. CSS is not a
 privacy boundary.
