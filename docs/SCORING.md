@@ -1,36 +1,26 @@
-# Match Scoring — Phase 3.2
+# Button V2 Scoring
 
-## Authoritative formula
+Scoring is match-local, in memory and owned only by the server.
 
-`apps/server/src/scoring/config.ts` is the single source of point values:
+| Event | Winner / recipient | Other side |
+| --- | ---: | ---: |
+| Correctly Call Bluff | +1 challenger | -1 bluffer |
+| False accusation | +1 truthful player | -1 challenger |
+| Land exactly on target | +2 landing player | +1 every other active player |
+| Complete Standard Secret | +3 | — |
+| Complete Hard Secret | +5 | — |
+| Fail Secret | 0 | — |
 
-| Component | Points |
-| --- | ---: |
-| Successful Secret Rule | 3 |
-| Successful public challenge | 1 to every round participant |
-| Easy difficulty bonus | 0 |
-| Medium difficulty bonus | 0 |
-| Hard difficulty bonus | 1 |
-| Explicitly eligible Wild bonus | 2 |
+Every negative challenge change uses a score floor of zero. There is no negative
+Secret score. Challenge and target changes may be shown live because their cause
+is public. Secret points and completion are added only during authoritative round
+resolution and published with the final breakdown.
 
-All values are additive. Failed rules, public failure, bad presses, overshoots and
-timeouts have no penalty. A Wild rule earns the Wild bonus only when its
-server-only template explicitly opts in; rarity alone never awards points.
+Each round entry reports challenge points, challenge penalties, target reward,
+Secret difficulty/result/reward, signed round total and nonnegative match total.
+Standings use competition ranking, so equal totals share a rank and the following
+rank skips. Equal top totals produce tied winners.
 
-## Timing and privacy
-
-RoomOwner finalizes private evaluator results during `resolving`, but the public
-score arrays remain unchanged and `roundScore` remains null. At the reveal-safe
-transition the server calculates each breakdown, updates match totals, ranks the
-standings and publishes rule results and points in the same versioned snapshot.
-The client cannot submit points, success, bonuses, totals, rank or winners.
-
-## Standings and winners
-
-Standings sort by descending total. Equal totals receive the same rank, with the
-next rank skipped (`1, 1, 3`). Every player sharing the highest final total is a
-winner; join order and client presentation order never break a tie.
-
-Scores last only for the current in-memory match. Host-authorized return to lobby
-clears totals, rounds, private assignments, rule history and Button state while
-preserving the room, members, host, settings and chat.
+The host can continue after a non-final reveal. The configured final reveal
+becomes `match_complete`. Return to lobby clears every score and ledger while
+preserving room membership, host, settings and chat.

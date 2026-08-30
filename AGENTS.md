@@ -7,14 +7,15 @@ for 4–10 players, not a dashboard or SaaS application.
 ## Scope and phase discipline
 
 - Do not continue into future development phases without being explicitly instructed.
-- The current authorized phase is 3.3: preserve all existing room, lobby, Secret
-  Rule Engine, Classic Button, scoring, match-completion and privacy behavior
-  while upgrading the in-game presentation to one premium physical table and
-  adding a lobby-configurable server-authoritative Button round duration.
-- The host may choose 60, 80, 120 or 180 seconds, or a whole custom value from
-  30 through 300 seconds, in the lobby. The default is 80 seconds. The setting
-  is locked after gameplay starts, is reused for every round in that match and
-  never transfers timer authority to the client.
+- The current authorized phase is Button V2. Preserve the existing room, lobby,
+  reconnect, social, security, Secret Rule Engine, match-completion and privacy
+  systems while maintaining the server-authoritative hidden-card bluffing game.
+- Button V2 deals five private cards, accepts a public claimed identity, gives
+  eligible opponents one server-timed challenge window, resolves the real card,
+  owns penalties/scores/target voting and runs at most one Last Chance rotation.
+- Lobby Button settings are deck length, optional exact target, turn timer,
+  challenge timer and match rounds. They are validated server-side and locked
+  after gameplay starts. Timer authority never transfers to the client.
 - The local demo is public teaching material, not real gameplay. Keep its fake
   counters and choreography in `apps/web/src/components/home/demo`. Never reuse
   this script as the future authoritative mini-game engine or network state.
@@ -23,12 +24,12 @@ for 4–10 players, not a dashboard or SaaS application.
   or any other mini-game. Do not add a database, accounts, payments,
   matchmaking, a public room browser, voice, permanent bans, moderator roles,
   achievements, persistent scoring/progression, or rematch/stay-together.
-- Phase 3.3 may expose server-calculated round points and match standings only at
-  reveal-safe phases. It must not add XP, coins, ranked ladders, battle passes,
-  persistent progression, negative scoring, or client-calculated winners.
-- Classic is the only playable Button mode. Mayhem may receive isolated types
-  and architecture documentation only; do not play-enable Action Tokens, secret
-  actions, public events, or Mayhem rule combinations.
+- Button V2 may expose server-calculated live challenge/target scores and final
+  Secret results at reveal-safe phases. It must not add XP, coins, ranked
+  ladders, battle passes, persistent progression, negative match totals, or
+  client-calculated winners.
+- V2 is the only playable Button mode. Do not revive Classic recharge/repeat
+  mechanics, DOUBLE/BLOCK/PROTECT, Action Tokens, Mayhem, or the exact-20 game.
 - Spectators receive public state only, never another player's private data.
 - Room passwords/hashes and report details stay server-private. Invite URLs
   contain only the code. Personal mute stays local and never silences others.
@@ -121,7 +122,7 @@ for 4–10 players, not a dashboard or SaaS application.
 - `docs/PHASE_0_6.md`: isolated homepage interactions, sound/preferences, verification.
 - `docs/PHASE_1.md`: current rooms/lobby handoff, verification and four-window testing.
 - `docs/SECRET_RULE_ENGINE.md`: shared rule generation, privacy and evaluator architecture.
-- `docs/BUTTON_GAME.md`: current Phase 3.3 Button lifecycle, timer and privacy behavior.
+- `docs/BUTTON_GAME.md`: current Button V2 cards, challenge lifecycle, timers and privacy behavior.
 - `docs/SCORING.md`: match-local point configuration, reveal timing, ties and reset.
-- `docs/BUTTON_MAYHEM.md`: non-playable future mode boundary and reserved concepts.
+- `docs/BUTTON_MAYHEM.md`: retired mode note; it is not a playable or reserved Button V2 system.
 - `docs/ROADMAP.md`: explicitly gated future phases.

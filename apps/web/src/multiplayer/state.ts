@@ -24,3 +24,15 @@ export function newerSnapshot(current: PublicRoomSnapshot | null, incoming: Publ
   if (current && (current.roomId !== incoming.roomId || incoming.stateVersion <= current.stateVersion)) return current;
   return incoming;
 }
+
+/** A direct private delivery is recipient/round scoped and may only advance its revision. */
+export function newerPrivateState(
+  current: PrivatePlayerRoundState | null,
+  incoming: PrivatePlayerRoundState,
+  playerId: string,
+  roundId: string,
+) {
+  if (incoming.playerId !== playerId || incoming.roundId !== roundId) return current;
+  if (current?.playerId === playerId && current.roundId === roundId && incoming.revision <= current.revision) return current;
+  return incoming;
+}

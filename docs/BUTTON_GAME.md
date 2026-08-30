@@ -1,213 +1,95 @@
-# The Button — Phase 3.3
+# The Button V2
 
-**Classic is the only playable Button mode.** Its public mechanics remain
-unchanged from Phase 3.1. Mayhem is a non-playable design/type foundation; see
-[BUTTON_MAYHEM.md](./BUTTON_MAYHEM.md).
+The Button V2 is the only playable mini-game. It is a 4–10 player hidden-card
+bluffing game implemented inside the existing authoritative `RoomOwner`.
 
-## Public challenge
-
-**GET THE COUNTER TO EXACTLY 20.** The authoritative counter starts at 0. A
-normal accepted press adds 1. The round uses the host's locked lobby duration.
-
-The host selects the round duration in the lobby: 60, 80, 120 or 180 seconds,
-or a whole custom value from 30 through 300 seconds. The default is 80. Once the
-match starts the setting is locked and every round uses that selected value.
-
-- 20: success; input locks before another press can apply.
-- Above 20: overshoot failure; input locks immediately.
-- Timer reaches zero below 20: timeout failure; the current counter freezes.
-
-The homepage demo starts at 12 and is local teaching choreography. It shares no
-state or game code with this round.
-
-## State machine
+## Round sequence
 
 ```text
-lobby
-  └─ host game:start
-       └─ waiting_for_rule_ack
-            └─ every participant acknowledged
-                 └─ countdown (server deadline)
-                      └─ playing (server deadline)
-                           └─ resolving (success / overshoot / timeout)
-                                ├─ reveal
-                                │    └─ host next Button round
-                                └─ match_complete (automatic on final round)
-                                     └─ host return to lobby
+RULE_ACK → COUNTDOWN → TURN_ACTION → CHALLENGE
+                                  ├─ no challenge → real card resolves
+                                  └─ first challenge → CHALLENGE_REVEAL
+                                                       → PENALTY_DISCARD
+                                                       → real card resolves only when truthful
+
+card resolution → next TURN_ACTION
+exact target → TARGET_VOTE
+              ├─ END → ROUND_REVEAL / MATCH_COMPLETE
+              └─ CONTINUE → exactly one LAST_CHANCE rotation → reveal
 ```
 
-Preparation and card delivery are atomic. The protocol reserves
-`preparing_round`, `dealing_rules` and `round_complete` for later observable
-presentation steps, but no client sees a half-generated assignment set.
+The server chooses the starting player and initial clockwise direction. Turn and
+challenge deadlines are server timestamps. No animation delays server mutation.
 
-## Press resolution
+## Deck and hands
 
-`button:press` is a strict `{ requestId, roomId }` intention. RoomOwner validates
-the current socket binding, stable member, active role, connection, phase,
-previous accepted actor, global recharge deadline and request journal. The
-client cannot submit a counter, delta, score,
-modifier, completion or private progress value.
+The locked 50-card standard composition is:
 
-For an accepted action, the server:
+| Card | Count | Resolution |
+| --- | ---: | --- |
+| +1 | 11 | Button +1 |
+| +2 | 9 | Button +2 |
+| +3 | 5 | Button +3 |
+| -1 | 7 | Button -1, floor 0 |
+| -2 | 4 | Button -2, floor 0 |
+| SKIP | 3 | Target skips next normal turn; Button +1 |
+| STEAL | 2 | Random private card transfers from target; Button +1 |
+| INSPECT | 2 | Random target card is privately shown to inspector; Button +1 |
+| REVERSE | 3 | Reverse turn direction; Button +1 |
+| SHIELD | 2 | Block next hostile targeted effect; Button +1 |
+| WILD | 2 | Private choice of +1, +2, -1 or -2 only |
 
-1. resolves any relevant BLOCK/PROTECT/DOUBLE uses;
-2. creates an internal record with actor, previous/current values, delta,
-   timestamp, sequence and server-only modifier causes;
-3. emits typed observable events to the Button evaluators;
-4. updates every private assignment in server memory;
-5. appends allowlisted `PLAYER_PRESSED` and `COUNTER_CHANGED` public actions;
-6. checks exact target/overshoot and broadcasts a new versioned snapshot.
+Quick, Standard, Long and Epic decks scale proportionally for the active player
+count. Custom decks accept 30–200 cards and must contain at least five cards per
+player plus ten. A seeded largest-remainder calculation preserves the standard
+distribution and seeded server shuffle makes tests reproducible.
 
-Request IDs make a retransmitted physical press idempotent. Each accepted press
-starts one room-wide 850 ms recharge. The accepted actor then remains locked out
-until a different active player completes a press. Both rules are enforced before
-modifier consumption or counter mutation; wider transport/IP windows limit
-packet floods.
+Each active player receives five cards through a direct private delivery.
+Spectators receive no hand. A normal resolved/cancelled play consumes the played
+card and draws one replacement if available. A challenge loser chooses one
+additional private discard; that loss is never refilled. Empty deck does not end
+the round. A player with no cards receives the server-approved Basic Button +1
+safety action.
 
-## Event model
+## Claim and challenge
 
-The Button engine represents press request/accept/resolution, player press,
-counter change/value reach, final actor, modifier application, target,
-overshoot and timeout through typed server code and Phase 2 observable events.
-The retained public feed is deliberately narrower: it reports the actor and
-visible value result, never the hidden reason.
+The client sends a card ID, claimed card kind, and a target only for a targeted
+claim. The server verifies ownership but broadcasts only the claim. A player may
+claim a kind they do not own. Targeted fake claims use one public target; the
+target applies only when the real card matches that targeted claim.
 
-Public example:
+During the challenge window, the first valid opponent action wins atomically.
+No response means trust. An unchallenged card stays hidden and its real effect
+resolves. If actual and claim differ, the bluff is caught: the card is revealed,
+its effect is cancelled, challenger gains 1, bluffer loses 1 with score floor 0,
+and the bluffer chooses an extra discard. If they match, the false accusation is
+shown, the truthful card still resolves, the truthful player gains 1, challenger
+loses 1 with floor 0, and the challenger chooses the extra discard.
 
-```text
-MILO PRESSED
-14 → 16  (+2)
-```
+## Counter, target and vote
 
-Server/private cause until reveal:
+Positive movement that would exceed the target fails and leaves the counter
+unchanged. Negative movement floors at zero. Landing exactly on the target locks
+the counter for the rest of the round. The landing player gains 2 target points;
+every other active player gains 1, once.
 
-```text
-Milo consumed DOUBLE
-```
+Every active player then receives a private END/CONTINUE choice. Public state
+contains only submitted/eligible counts and the final result. A majority wins;
+an exact tie uses the seeded server random source. CONTINUE schedules one turn
+for each active player, respecting direction, skips and departure handling. The
+secured counter cannot move during this rotation.
 
-## Rule pack
+## Privacy and reconnect
 
-The pack contains **49 distinct Button mechanics**, not copy variants. Families
-cover:
+Public state contains counter, target, turn, direction, deck/discard counts,
+hand counts, shields/skips, public claim/target, challenge result when revealed,
+effect result, vote totals/result, public scores and reveal-safe results. It
+never contains card IDs, deck order, unchallenged actual cards, stolen/penalty
+card identities, Inspect knowledge, Secret assignments, vote identities or
+random seeds.
 
-- exact/minimum/maximum/no personal presses;
-- first, final and first-plus-final actor;
-- target first/final/count/absence/responsibility;
-- immediate follow, prohibited follow, pair ordering and legal three-actor patterns;
-- reach/avoid/own a value, parity, before/after/crossing conditions;
-- distinct/every player participation and paired cooperation;
-- DOUBLE, BLOCK and PROTECT hidden mechanics.
-
-Structured parameters provide counts, values and stable player targets. Values
-are drawn from relevant pre-target counters; targets are active players only.
-Generation uses the shared 24-candidate quality search, relationship graph,
-chaos weights and per-player history. Recent template/category/identity/target
-repetition is penalized.
-
-The Phase 3.1 pacing audit replaced objectives that required or merely prohibited
-same-player consecutive presses. The replacements require `owner → target →
-owner`, a target between two different actors, or three unique actors in a row,
-so all 49 mechanics remain meaningful under the core turn restriction.
-
-## Modifiers
-
-- **DOUBLE** consumes on the owner's next unblocked valid press and produces +2.
-- **BLOCK** consumes when its private target next presses and produces +0.
-- **PROTECT** consumes on the owner's next press and allows the normal (or
-  doubled) result through an otherwise active BLOCK. The BLOCK also consumes.
-
-Chill's general category weights make hidden abilities uncommon, Normal allows
-them occasionally, and Chaos gives them more weight. At most one Secret Rule is
-assigned per player, and template families are unique within a generated round.
-
-## Evaluation
-
-Evaluators read authoritative observable history. They never parse display copy.
-Examples:
-
-- exact press count reports current/target and permanently fails above target;
-- avoid value permanently fails once the counter hits that value;
-- reach value completes when it occurs;
-- target-final is `currently_satisfied` while that target is latest and changes
-  if another player presses;
-- abilities report READY, USED or UNUSED from server-owned uses.
-
-Only the owner receives live progress. Group success and private success remain
-separate. Match-local points appear only with the safe public reveal.
-
-## Scoring and standings
-
-The server awards 3 points for Secret Rule success, 1 point to every participant
-for public challenge success, and a 1-point Hard bonus. Easy and Medium currently
-add zero. A 2-point Wild bonus applies only to templates explicitly marked
-eligible; rarity never awards it by itself. Failures and overshoots subtract
-nothing. Values live in one scoring configuration.
-
-During `playing` and `resolving`, public scores retain their previous-round values
-and `roundScore` remains null. Reveal publishes the score breakdown, standings
-and Secret Rule result atomically. Tied totals share rank. After the configured
-final round, the server enters `match_complete` and supplies every top-scoring
-winner; the client never chooses a winner.
-
-Non-final reveals accept a host-only `NEXT ROUND`. Final completion instead
-offers host-only return to lobby, which preserves the room, members, host,
-settings and chat while clearing readiness, scores, round/rule state and Button
-state. See [SCORING.md](./SCORING.md).
-
-## Gameplay presentation
-
-The active screen is one premium physical table: count-aware seats surround a
-wide oval tabletop with layered housing, recessed surface, fasteners and a subtle
-lime edge. The target, mechanical split-digit counter, status lights and large red
-Button are integrated into its center. The compact table log sits on the surface;
-chat opens over it without moving the table. Mobile preserves the same hierarchy
-in a vertical table adaptation. The timer adds restrained urgency below 15 and
-5 seconds. The Button derives AVAILABLE,
-PRESSED, RECHARGING, WAITING, DISABLED and ROUND OVER labels from authoritative
-public state. Chat is collapsed by default and opens over the table; it does not
-resize the game. Rule reading uses one deliberate reveal and acknowledgement,
-followed by a compact waiting state and a shared 3–2–1–GO countdown. A dismissible
-first-round primer explains exactly 20, normal +1, turn-taking and secret rules.
-
-## Timer and stateVersion
-
-Countdown and play use absolute server deadlines and a `serverNow` sample. The
-selected lobby duration is snapshotted into the authoritative server round and
-published as milliseconds only after play starts. The browser formats `mm:ss`
-and interpolates presentation only; RoomOwner performs the transitions in
-its periodic sweep. Each transition/action increments the room `stateVersion`.
-The browser discards stale snapshots, so an older counter cannot overwrite a
-newer one.
-
-## Reconnects and departures
-
-Assignments attach to stable player UUIDs, not sockets. Reconnect restores the
-same color, seat, Secret Rule, ability uses and progress on a new authorized
-socket. Disconnect keeps the seat during the grace period.
-
-If rule reading loses a player, the table waits for the grace window. Expiry or
-explicit leave marks that participant non-blocking for acknowledgement while
-preserving the already-generated rule for safe final evaluation. A departed
-target can make an objective fail at resolution; it cannot crash an evaluator.
-Mid-game host kick is disabled; explicit leave is still supported.
-
-## Spectators and privacy
-
-Spectators see the challenge, seats, counter, timer, public chat/feed, group
-result and final reveal. They receive no private card/progress/ability and cannot
-acknowledge or press. Server-side checks enforce this even for handcrafted
-packets.
-
-Before reveal, the public projection never contains rule content, evaluator IDs,
-progress, hidden ability ownership or server-only modifier explanations. Reveal
-entries are rebuilt from a narrow schema and include only display name, rule
-wording, final status and progress summary. Relationship highlights omit internal
-reason tags.
-
-## Balancing seams
-
-The default round setting is 80 seconds and the lobby allows 30–300. The server
-constants retain a 3-second countdown, a 1.2-second resolution beat and an 850 ms
-global recharge. RoomOwner accepts test-only constructor overrides so automated
-tests do not wait in real time. Future balancing may tune constants and pack
-weights, but changing settings during a match remains intentionally unsupported.
+Private state contains only the authenticated player's hand, Secret, masked live
+Secret progress, Inspect records and pending choice. Its independent `revision`
+lets the browser discard stale deliveries. Reconnect authorization replaces the
+old socket and sends a fresh public snapshot plus that player's current private
+projection. Secret completion becomes visible only at round reveal.

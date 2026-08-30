@@ -1,13 +1,14 @@
-// HOMEPAGE FICTION ONLY. Not a game engine, network contract, or RoomState.
-// Real mini-games must be implemented later on the authoritative Node server.
+// HOMEPAGE FICTION ONLY. This script never imports the realtime client, shared
+// protocol, RoomState, or authoritative game engine.
 export const demoFrames = {
-  idle: { counter: 12, actor: null, message: "Go on. Press it.", next: null, delay: 0 },
-  you: { counter: 13, actor: "you", message: "You pressed. Counter: 13.", next: "liv", delay: 1800 },
-  liv: { counter: 14, actor: "liv", message: "Liv pressed. Counter: 14.", next: "milo", delay: 2000 },
-  milo: { counter: 16, actor: "milo", message: "Milo pressed. Counter: 16. Hang on…", next: "wait", delay: 1800 },
-  wait: { counter: 16, actor: null, message: "WAIT. WHY DID THAT GO UP BY 2?", next: "reveal", delay: 2600 },
-  reveal: { counter: 16, actor: null, message: "Milo’s secret rule: your presses count twice.", next: "complete", delay: 2800 },
-  complete: { counter: 16, actor: null, message: "NOW IMAGINE NOBODY TOLD YOU THAT.", next: null, delay: 0 },
+  idle: { claim: null, actual: null, message: "PLAY THE EXAMPLE", next: null, delay: 0 },
+  claim: { claim: "+2", actual: null, message: "YOU CLAIM +2", next: "challenge", delay: 1200 },
+  challenge: { claim: "+2", actual: null, message: "LIV CALLS BLUFF", next: "flip", delay: 1250 },
+  flip: { claim: "+2", actual: "-2", message: "ACTUAL CARD: -2", next: "caught", delay: 1100 },
+  caught: { claim: "+2", actual: "-2", message: "BLUFF CAUGHT", next: "score", delay: 1250 },
+  score: { claim: "+2", actual: "-2", message: "LIV +1 · YOU -1", next: "secret", delay: 1250 },
+  secret: { claim: "+2", actual: "-2", message: "BUT WHY DID YOU BLUFF?", next: "complete", delay: 1500 },
+  complete: { claim: "+2", actual: "-2", message: "EVERY MOVE HAS A MOTIVE.", next: null, delay: 0 },
 } as const;
 export type DemoStage = keyof typeof demoFrames;
 export type DemoState = Readonly<{ stage: DemoStage; run: number }>;
@@ -16,7 +17,7 @@ export const initialDemo: DemoState = { stage: "idle", run: 0 };
 
 export function demoReducer(state: DemoState, action: DemoAction): DemoState {
   if (action.type === "reset") return { stage: "idle", run: state.run + 1 };
-  if (action.type === "press") return state.stage === "idle" ? { ...state, stage: "you" } : state;
+  if (action.type === "press") return state.stage === "idle" ? { ...state, stage: "claim" } : state;
   if (action.run !== state.run || action.from !== state.stage) return state;
   const next = demoFrames[state.stage].next;
   return next ? { ...state, stage: next } : state;
@@ -25,6 +26,5 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
 export type DemoScheduler = { after: (callback: () => void, delay: number) => () => void };
 export function scheduleDemoStep(state: DemoState, dispatch: (action: DemoAction) => void, scheduler: DemoScheduler): () => void {
   const frame = demoFrames[state.stage];
-  if (!frame.next) return () => {};
-  return scheduler.after(() => dispatch({ type: "advance", from: state.stage, run: state.run }), frame.delay);
+  return frame.next ? scheduler.after(() => dispatch({ type: "advance", from: state.stage, run: state.run }), frame.delay) : () => {};
 }

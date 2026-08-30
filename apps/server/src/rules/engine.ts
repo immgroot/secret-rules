@@ -6,9 +6,9 @@ import {
 } from "@secret-rules/shared";
 import { RULE_TEMPLATES } from "./catalog.ts";
 import { BUTTON_RULE_TEMPLATES } from "../games/button/catalog.ts";
-import { BUTTON_MODE_CONFIG, CLASSIC_BUTTON_MODE } from "../games/button/modes.ts";
+import { BUTTON_MODE_CONFIG, BUTTON_V2_MODE } from "../games/button/modes.ts";
 import { deterministicUuid, seededRandom } from "./rng.ts";
-import type { ActivePlayer, CandidateSet, RelationshipEdge, RelationshipGraph, RuleGenerationContext, RuleHistory, RuleHistoryEntry, RuleTemplate } from "./types.ts";
+import type { ActivePlayer, ButtonV2BalanceContext, CandidateSet, RelationshipEdge, RelationshipGraph, RuleGenerationContext, RuleHistory, RuleHistoryEntry, RuleTemplate } from "./types.ts";
 
 export const MAX_GENERATION_ATTEMPTS = 24;
 export const RULE_HISTORY_LIMIT = 12;
@@ -19,9 +19,9 @@ export const CORE_PREVIEW_MINI_GAME = Object.freeze({
   capabilities: ["HAS_DISCRETE_ACTION", "HAS_PUBLIC_VALUE", "HAS_TIMER", "HAS_CHOICES", "HAS_SEQUENCE", "HAS_TARGETABLE_ACTIONS", "SUPPORTS_HIDDEN_ABILITY", "HAS_PUBLIC_EVENTS", "HAS_FINAL_ACTOR"] as const satisfies readonly MiniGameCapability[],
 });
 export const THE_BUTTON_MINI_GAME = Object.freeze({
-  id: "the-button", name: "THE BUTTON", publicObjective: "GET THE COUNTER TO EXACTLY 20.",
-  defaultMode: CLASSIC_BUTTON_MODE,
-  capabilities: ["HAS_DISCRETE_ACTION", "HAS_PUBLIC_VALUE", "HAS_TIMER", "HAS_SEQUENCE", "HAS_TARGETABLE_ACTIONS", "SUPPORTS_HIDDEN_ABILITY", "HAS_PUBLIC_EVENTS", "HAS_FINAL_ACTOR"] as const satisfies readonly MiniGameCapability[],
+  id: "the-button-v2", name: "THE BUTTON", publicObjective: "REACH THE EXACT TARGET.",
+  defaultMode: BUTTON_V2_MODE,
+  capabilities: ["HAS_DISCRETE_ACTION", "HAS_PUBLIC_VALUE", "HAS_TIMER", "HAS_CHOICES", "HAS_SEQUENCE", "HAS_TARGETABLE_ACTIONS", "HAS_PUBLIC_EVENTS", "HAS_FINAL_ACTOR"] as const satisfies readonly MiniGameCapability[],
 });
 const ALL_RULE_TEMPLATES: readonly RuleTemplate[] = [...RULE_TEMPLATES, ...BUTTON_RULE_TEMPLATES];
 const ALL_RULE_TEMPLATE_BY_ID = new Map(ALL_RULE_TEMPLATES.map((template) => [template.id, template]));
@@ -35,6 +35,7 @@ export type GenerateRuleSetInput = {
   readonly capabilities: readonly MiniGameCapability[];
   readonly buttonMode?: ButtonMode;
   readonly history?: RuleHistory;
+  readonly buttonV2Balance?: ButtonV2BalanceContext;
 };
 export type GenerationMetadata = {
   readonly attempts: number;
@@ -210,7 +211,7 @@ function scoreSet(assignments: ReadonlyMap<string, SecretRule>, graph: Relations
 }
 
 function relationshipPlan(miniGameId: string, chaos: RoomSettings["chaos"], attempt: number, players: readonly ActivePlayer[], history: RuleHistory) {
-  const pair = miniGameId === THE_BUTTON_MINI_GAME.id ? ["BUTTON_REACH_VALUE", "BUTTON_AVOID_VALUE"] : ["PERSONAL_RECOVER_VALUE", "AVOID_PUBLIC_VALUE"];
+  const pair = miniGameId === THE_BUTTON_MINI_GAME.id ? ["BUTTON_V2_BLUFF_SUCCESS", "BUTTON_V2_CORRECT_CHALLENGE"] : ["PERSONAL_RECOVER_VALUE", "AVOID_PUBLIC_VALUE"];
   const conflictFresh = players.slice(0, 2).every((player, index) => !(history.get(player.playerId) ?? []).some((entry) => entry.templateId === pair[index]));
   if (chaos !== "chill" && attempt < 8 && conflictFresh) return pair;
   if (chaos === "chill" && attempt < 4) return ["COOP_HELP_TARGET_COMPLETE", "PROTECT_TARGET_TURN"];
@@ -219,7 +220,7 @@ function relationshipPlan(miniGameId: string, chaos: RoomSettings["chaos"], atte
 function candidate(input: GenerateRuleSetInput, attempt: number): CandidateSet {
   const random = seededRandom(`${input.seed}:${input.roundNumber}:${input.miniGameId}:${attempt}`);
   const capabilities = new Set(input.capabilities);
-  const eligible = eligibleTemplates(input.miniGameId, capabilities, input.buttonMode ?? CLASSIC_BUTTON_MODE);
+  const eligible = eligibleTemplates(input.miniGameId, capabilities, input.buttonMode ?? BUTTON_V2_MODE);
   const history: RuleHistory = input.history ?? new Map<string, readonly RuleHistoryEntry[]>();
   const assignments = new Map<string, SecretRule>();
   const usedTemplates = new Set<string>();
@@ -239,7 +240,7 @@ function candidate(input: GenerateRuleSetInput, attempt: number): CandidateSet {
     }, random);
     usedTemplates.add(template.id);
     const resolved = resolveTarget(template.selector, owner, input.players, random, targetLoads, recent);
-    const context: RuleGenerationContext = { miniGameId: input.miniGameId, capabilities, players: input.players, owner, target: resolved.target, secondaryTarget: resolved.secondary, plannedValue: plan.includes(template.id) ? plannedValue : null, random };
+    const context: RuleGenerationContext = { miniGameId: input.miniGameId, capabilities, players: input.players, owner, target: resolved.target, secondaryTarget: resolved.secondary, plannedValue: plan.includes(template.id) ? plannedValue : null, ...(input.buttonV2Balance ? { buttonV2Balance: input.buttonV2Balance } : {}), random };
     const parameters = template.generateParameters(context);
     if (!template.validate(context, parameters)) continue;
     assignments.set(owner.playerId, generatedRule(template, context, parameters, `${input.seed}:${input.roundNumber}:${owner.playerId}:${template.id}`));
@@ -251,7 +252,7 @@ function candidate(input: GenerateRuleSetInput, attempt: number): CandidateSet {
 
 function safeFallback(input: GenerateRuleSetInput): CandidateSet {
   const safeIds = input.miniGameId === THE_BUTTON_MINI_GAME.id
-    ? ["BUTTON_PRESS_EXACTLY", "BUTTON_TARGET_AT_LEAST", "BUTTON_FIRST_PRESS", "BUTTON_REACH_VALUE", "BUTTON_PRESS_WHILE_EVEN", "BUTTON_TARGET_EXACTLY", "BUTTON_PRESS_BEFORE_VALUE", "BUTTON_DISTINCT_PLAYERS", "BUTTON_FINAL_PRESS", "BUTTON_PRESS_NO_MORE"]
+    ? ["BUTTON_V2_BLUFF_SUCCESS", "BUTTON_V2_CORRECT_CHALLENGE", "BUTTON_V2_FALSELY_ACCUSED", "BUTTON_V2_NEGATIVE_RESOLVED", "BUTTON_V2_TARGETED_RESOLVED", "BUTTON_V2_DISTINCT_CLAIMS", "BUTTON_V2_TRUTHFUL_RESOLUTIONS", "BUTTON_V2_POSITIVE_RESOLVED", "BUTTON_V2_WIN_CHALLENGES", "BUTTON_V2_MIXED_MOVEMENT"]
     : ["PERSONAL_EXACT_ACTIONS", "COOP_HELP_TARGET_COMPLETE", "PERSONAL_FIRST_ACTION", "PROTECT_TARGET_TURN", "PERSONAL_UNIQUE_OPTION", "TARGET_MATCH_ACTIONS", "TIMING_ACT_BEFORE", "SEQUENCE_POSITION", "PREDICT_FINAL_ACTOR", "PERSONAL_PASS_EXACTLY"];
   const random = seededRandom(`${input.seed}:${input.roundNumber}:${input.miniGameId}:fallback`);
   const capabilities = new Set(input.capabilities);
@@ -260,7 +261,7 @@ function safeFallback(input: GenerateRuleSetInput): CandidateSet {
   for (const [index, owner] of input.players.entries()) {
     const template = ALL_RULE_TEMPLATE_BY_ID.get(safeIds[index]!)!;
     const resolved = resolveTarget(template.selector, owner, input.players, random, targetLoads, input.history?.get(owner.playerId) ?? []);
-    const context: RuleGenerationContext = { miniGameId: input.miniGameId, capabilities, players: input.players, owner, target: resolved.target, secondaryTarget: resolved.secondary, plannedValue: null, random };
+    const context: RuleGenerationContext = { miniGameId: input.miniGameId, capabilities, players: input.players, owner, target: resolved.target, secondaryTarget: resolved.secondary, plannedValue: null, ...(input.buttonV2Balance ? { buttonV2Balance: input.buttonV2Balance } : {}), random };
     const parameters = template.generateParameters(context);
     assignments.set(owner.playerId, generatedRule(template, context, parameters, `${input.seed}:${input.roundNumber}:${owner.playerId}:fallback`));
   }
@@ -271,7 +272,7 @@ function safeFallback(input: GenerateRuleSetInput): CandidateSet {
 
 export function generateRuleSet(input: GenerateRuleSetInput): GeneratedRuleSet {
   const started = performance.now();
-  if (input.miniGameId === THE_BUTTON_MINI_GAME.id && !BUTTON_MODE_CONFIG[input.buttonMode ?? CLASSIC_BUTTON_MODE].playable) {
+  if (input.miniGameId === THE_BUTTON_MINI_GAME.id && !BUTTON_MODE_CONFIG[input.buttonMode ?? BUTTON_V2_MODE].playable) {
     throw new Error(`Button mode ${input.buttonMode} is not playable.`);
   }
   if (input.players.length < 4 || input.players.length > 10) throw new Error("Rule generation requires 4–10 active players.");
@@ -293,11 +294,9 @@ export function generateRuleSet(input: GenerateRuleSetInput): GeneratedRuleSet {
   for (const [playerId, rule] of best.assignments) {
     const target = rule.parameters.actionCount ?? null;
     const privateState = PrivatePlayerRoundStateSchema.parse({
-      roundId, roundNumber: input.roundNumber, miniGameId: input.miniGameId, playerId, secretRule: rule,
-      privateKnowledge: rule.category === "private_knowledge" ? [{ id: deterministicUuid(`${rule.id}:knowledge`), title: "PRIVATE INFORMATION", description: rule.description }] : [],
-      hiddenAbilities: rule.category === "hidden_ability" && rule.parameters.ability ? [{ id: deterministicUuid(`${rule.id}:ability`), title: "SECRET ABILITY", ability: rule.parameters.ability, description: rule.description, usesRemaining: rule.parameters.uses ?? 1 }] : [],
+      roundId, roundNumber: input.roundNumber, miniGameId: input.miniGameId, playerId, revision: 1, hand: [], secretRule: rule,
       privateProgress: { status: "not_started", current: target === null ? null : 0, target, summary: "NOT STARTED" },
-      privateTargetPlayerId: rule.targetPlayerId ?? null, acknowledgedAt: null,
+      privateTargetPlayerId: rule.targetPlayerId ?? null, acknowledgedAt: null, inspections: [], pendingChoice: null,
     });
     privateAssignments.set(playerId, privateState);
     historyEntries.set(playerId, { templateId: rule.templateId, identity: rule.identity, category: rule.category, ...(rule.targetPlayerId ? { targetPlayerId: rule.targetPlayerId } : {}) });

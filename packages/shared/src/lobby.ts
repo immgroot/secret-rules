@@ -1,17 +1,20 @@
 import { z } from "zod";
 import { PublicRoundStateSchema, type PrivateRoundDelivery } from "./rules.ts";
+import {
+  ButtonCardKindSchema, ButtonDeckPresetSchema, ButtonVoteChoiceSchema, WildMovementSchema,
+  DEFAULT_CHALLENGE_TIMER_SECONDS, DEFAULT_TURN_TIMER_SECONDS,
+  MAX_BUTTON_TARGET, MAX_CHALLENGE_TIMER_SECONDS, MAX_CUSTOM_DECK_SIZE, MAX_TURN_TIMER_SECONDS,
+  MIN_BUTTON_TARGET, MIN_CHALLENGE_TIMER_SECONDS, MIN_CUSTOM_DECK_SIZE, MIN_TURN_TIMER_SECONDS,
+  isTargetedButtonCard,
+} from "./button-v2.ts";
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const AVATAR_IDS = ["lime", "violet", "coral", "blue"] as const;
 export const AVATAR_LABELS = { lime: "Bean", violet: "Round", coral: "Sleepy", blue: "Square" } as const;
 export const PLAYER_COLORS = ["lime", "violet", "coral", "blue", "gold", "pink", "teal", "orange", "indigo", "silver"] as const;
 export const COLOR_LABELS = { lime: "Green", violet: "Lavender", coral: "Coral", blue: "Blue", gold: "Gold", pink: "Pink", teal: "Teal", orange: "Orange", indigo: "Indigo", silver: "Silver" } as const;
 export const ROUND_COUNTS = [3, 5, 7, 10] as const;
-export const BUTTON_ROUND_DURATION_PRESETS = [60, 80, 120, 180] as const;
-export const MIN_BUTTON_ROUND_DURATION_SECONDS = 30;
-export const MAX_BUTTON_ROUND_DURATION_SECONDS = 300;
-export const DEFAULT_BUTTON_ROUND_DURATION_SECONDS = 80;
 export const CHAOS_LEVELS = ["chill", "normal", "chaos"] as const;
 export const CHAOS_DESCRIPTIONS = { chill: "We’re still friends.", normal: "Questionable decisions.", chaos: "Friendships may be damaged." } as const;
 export const MAX_SPECTATORS = 8;
@@ -47,15 +50,22 @@ export const RoomSettingsSchema = z.strictObject({
   maxPlayers: z.number().int().min(4).max(10),
   roundCount: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(10)]),
   chaos: z.enum(CHAOS_LEVELS),
-  buttonRoundDurationSeconds: z.number().int().min(MIN_BUTTON_ROUND_DURATION_SECONDS).max(MAX_BUTTON_ROUND_DURATION_SECONDS)
-    .default(DEFAULT_BUTTON_ROUND_DURATION_SECONDS),
+  buttonDeckPreset: ButtonDeckPresetSchema.default("standard"),
+  buttonCustomDeckSize: z.number().int().min(MIN_CUSTOM_DECK_SIZE).max(MAX_CUSTOM_DECK_SIZE).default(50),
+  buttonTarget: z.number().int().min(MIN_BUTTON_TARGET).max(MAX_BUTTON_TARGET).nullable().default(null),
+  turnTimerSeconds: z.number().int().min(MIN_TURN_TIMER_SECONDS).max(MAX_TURN_TIMER_SECONDS).default(DEFAULT_TURN_TIMER_SECONDS),
+  challengeTimerSeconds: z.number().int().min(MIN_CHALLENGE_TIMER_SECONDS).max(MAX_CHALLENGE_TIMER_SECONDS).default(DEFAULT_CHALLENGE_TIMER_SECONDS),
 });
 export type RoomSettings = z.infer<typeof RoomSettingsSchema>;
 export const DEFAULT_ROOM_SETTINGS: Readonly<RoomSettings> = Object.freeze({
   maxPlayers: 10,
   roundCount: 5,
   chaos: "normal",
-  buttonRoundDurationSeconds: DEFAULT_BUTTON_ROUND_DURATION_SECONDS,
+  buttonDeckPreset: "standard",
+  buttonCustomDeckSize: 50,
+  buttonTarget: null,
+  turnTimerSeconds: DEFAULT_TURN_TIMER_SECONDS,
+  challengeTimerSeconds: DEFAULT_CHALLENGE_TIMER_SECONDS,
 });
 
 export const PublicPlayerSchema = z.strictObject({
@@ -106,7 +116,8 @@ export const ErrorCodeSchema = z.enum([
   "INVALID_ROOM_NAME", "PLAYER_REMOVED", "INVALID_TARGET", "COLOR_UNAVAILABLE", "SPECTATORS_FULL",
   "PLAYER_ONLY", "HOST_MUST_TRANSFER", "INVALID_CHAT", "INVALID_REPORT", "REPORT_ALREADY_SENT",
   "NOT_READY", "ROUND_NOT_PREPARED", "INVALID_GAME_PHASE", "ACTION_REJECTED",
-  "BUTTON_RECHARGING", "BUTTON_REPEAT_LOCKED",
+  "NOT_YOUR_TURN", "CARD_NOT_FOUND", "CHALLENGE_CLOSED", "CHOICE_REQUIRED",
+  "VOTE_ALREADY_CAST", "BASIC_ACTION_UNAVAILABLE",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 export const ServerErrorSchema = z.strictObject({ code: ErrorCodeSchema, message: z.string().min(1).max(180), recoverable: z.boolean() });
@@ -132,7 +143,10 @@ export const EVENTS = {
   visibility: "room:setVisibility", lock: "room:setLock", password: "room:setPassword", name: "room:setName",
   kick: "room:kickPlayer", transfer: "room:transferHost", avatar: "player:setAvatar", color: "player:setColor",
   randomize: "player:randomizeAvatar", role: "player:setRole", activity: "player:activity", chat: "chat:send", report: "player:report",
-  startGame: "game:start", acknowledgeRule: "round:acknowledgeRule", buttonPress: "button:press", continueRound: "round:continue", returnToLobby: "match:returnToLobby",
+  startGame: "game:start", acknowledgeRule: "round:acknowledgeRule",
+  playCard: "button:playCard", callBluff: "button:callBluff", penaltyDiscard: "button:penaltyDiscard",
+  wildChoice: "button:wildChoice", targetVote: "button:targetVote", basicButton: "button:basicAction",
+  continueRound: "round:continue", returnToLobby: "match:returnToLobby",
   update: "room:update", privateState: "round:privateState", ended: "session:ended", error: "server:error",
 } as const;
 export const RequestSchema = z.strictObject({ requestId: z.uuid() });
@@ -155,6 +169,15 @@ export const SetColorSchema = RoomCommandSchema.extend({ playerColor: PlayerColo
 export const SetRoleSchema = RoomCommandSchema.extend({ role: PlayerRoleSchema });
 export const ChatSendSchema = RoomCommandSchema.extend({ text: ChatTextSchema });
 export const ReportPlayerSchema = TargetPlayerSchema.extend({ reason: ReportReasonSchema, description: ReportDescriptionSchema });
+export const PlayButtonCardSchema = RoomCommandSchema.extend({
+  cardId: z.uuid(), claim: ButtonCardKindSchema, targetPlayerId: z.uuid().optional(),
+}).superRefine((value, context) => {
+  const targeted = isTargetedButtonCard(value.claim);
+  if (targeted !== (value.targetPlayerId !== undefined)) context.addIssue({ code: "custom", message: "Targeted claims require exactly one public target." });
+});
+export const PenaltyDiscardSchema = RoomCommandSchema.extend({ cardId: z.uuid() });
+export const WildChoiceSchema = RoomCommandSchema.extend({ movement: WildMovementSchema });
+export const TargetVoteSchema = RoomCommandSchema.extend({ choice: ButtonVoteChoiceSchema });
 export const HandshakeSchema = z.strictObject({ protocolVersion: z.literal(PROTOCOL_VERSION) });
 export type CreateRoom = z.infer<typeof CreateRoomSchema>;
 export type JoinRoom = z.infer<typeof JoinRoomSchema>;
@@ -170,7 +193,10 @@ export const STATE_COMMAND_SCHEMAS = {
   [EVENTS.avatar]: SetAvatarSchema, [EVENTS.color]: SetColorSchema, [EVENTS.randomize]: RoomCommandSchema,
   [EVENTS.role]: SetRoleSchema, [EVENTS.activity]: RoomCommandSchema, [EVENTS.chat]: ChatSendSchema, [EVENTS.report]: ReportPlayerSchema,
   [EVENTS.startGame]: RoomCommandSchema, [EVENTS.acknowledgeRule]: RoomCommandSchema,
-  [EVENTS.buttonPress]: RoomCommandSchema, [EVENTS.continueRound]: RoomCommandSchema, [EVENTS.returnToLobby]: RoomCommandSchema,
+  [EVENTS.playCard]: PlayButtonCardSchema, [EVENTS.callBluff]: RoomCommandSchema,
+  [EVENTS.penaltyDiscard]: PenaltyDiscardSchema, [EVENTS.wildChoice]: WildChoiceSchema,
+  [EVENTS.targetVote]: TargetVoteSchema, [EVENTS.basicButton]: RoomCommandSchema,
+  [EVENTS.continueRound]: RoomCommandSchema, [EVENTS.returnToLobby]: RoomCommandSchema,
 } as const;
 export type StateCommandName = keyof typeof STATE_COMMAND_SCHEMAS;
 export type StateCommandPayload<K extends StateCommandName> = z.infer<(typeof STATE_COMMAND_SCHEMAS)[K]>;

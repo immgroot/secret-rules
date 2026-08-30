@@ -1245,6 +1245,67 @@
   font-size: .625rem;
 }
 
+/* Button V2 homepage demo remains a local, scripted teaching vignette. */
+.local-demo--v2 .preview-objective h3 span { color: var(--accent); }
+.v2-demo-table { position: relative; height: 220px; margin-top: 8px; border: 1px solid #ffffff10; border-radius: 48% / 42%; background: radial-gradient(ellipse, #2b3326, #121610 72%); box-shadow: inset 0 -18px 30px #0008, 0 14px 24px #0007; }
+.v2-demo-player { position: absolute; z-index: 3; }
+.v2-demo-player--you { left: 6%; bottom: 15px; }
+.v2-demo-player--liv { right: 6%; top: 17px; }
+.v2-demo-card { position: absolute; left: 50%; top: 42px; width: 78px; height: 106px; display: grid; place-items: center; border: 1px solid #d4f46265; border-radius: 7px; color: var(--accent); background: repeating-linear-gradient(45deg, #131812 0 7px, #283122 7px 9px); box-shadow: 0 12px 20px #0009; transform: translateX(-50%) rotate(-4deg); }
+.v2-demo-card[data-flipped="true"] { color: var(--ink); background: var(--secret); animation: demo-v2-flip .4s var(--ease-out); }
+.v2-demo-card span { font: 800 2.3rem/1 var(--font-display), sans-serif; }
+@keyframes demo-v2-flip { 50% { transform: translateX(-50%) rotateY(90deg); } }
+.v2-demo-claim { position: absolute; left: 50%; top: 155px; margin: 0; color: var(--accent); transform: translateX(-50%); white-space: nowrap; font: 800 1.2rem/1 var(--font-display), sans-serif; }
+.v2-demo-claim b { color: var(--text-secondary); font-size: .72rem; }
+.v2-demo-bluff { position: absolute; z-index: 4; right: 10%; bottom: 28px; padding: 7px 10px; border: 1px solid #ff796f; border-radius: 5px; color: #ff8f86; background: #33110f; transform: rotate(5deg); font: 700 .53rem/1 var(--font-secret), monospace; letter-spacing: .1em; }
+.v2-demo-score { position: absolute; left: 4%; top: 14px; display: grid; gap: 4px; color: var(--text-muted); font: 500 .47rem/1 var(--font-secret), monospace; letter-spacing: .09em; }
+.v2-demo-score b { color: var(--accent); }
+.local-demo--v2 .demo-story { min-height: 155px; }
+.local-demo--v2 .demo-secret { min-height: 130px; }
+
+.video-section { padding-block: 70px 82px; border-top: 1px solid var(--border); }
+.video-section h2 { margin: 7px 0 0; font: 800 clamp(3rem, 6vw, 5.8rem)/.86 var(--font-display), sans-serif; }
+.video-section h2 span { color: var(--accent); }
+.how-video { position: relative; width: 100%; aspect-ratio: 16 / 8.4; overflow: hidden; margin-top: 34px; border: 1px solid #d4f46235; border-radius: 16px; background: #0a0d09; box-shadow: 0 24px 60px #0009; }
+.how-video video { width: 100%; height: 100%; display: none; object-fit: cover; }
+.how-video[data-available="true"] video { display: block; }
+.how-video__poster { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; background: radial-gradient(circle at 50% 45%, #34402b, #151a12 50%, #080a07 100%); }
+.how-video__poster::before { content: ""; position: absolute; inset: 24px; border: 1px solid #ffffff0c; border-radius: 9px; }
+.how-video__play { width: 78px; height: 78px; display: grid; place-items: center; margin-bottom: 10px; border: 1px solid var(--accent); border-radius: 50%; color: var(--ink); background: var(--accent); box-shadow: 0 0 36px #d4f46234; }
+.how-video__poster strong { font: 800 clamp(2.2rem, 5vw, 4.8rem)/.9 var(--font-display), sans-serif; }
+.how-video__poster small { color: var(--accent); font: 500 .68rem/1 var(--font-secret), monospace; letter-spacing: .2em; }
+.how-video__poster p { color: var(--text-muted); font-size: .68rem; }
+
+.tutorial-modal--v2 { width: min(720px, calc(100vw - 28px)); }
+.tutorial-modal--v2 .tutorial-progress ol { grid-template-columns: repeat(8, 1fr); }
+.tutorial-v2-copy { margin: -8px 0 16px; color: var(--text-muted); line-height: 1.55; }
+.tutorial-modal--v2 .tutorial-stage { min-height: 285px; display: grid; place-items: center; }
+.tutorial-card-fan { display: flex; padding-right: 35px; }
+.tutorial-card-fan i { width: 95px; height: 138px; display: grid; place-items: center; margin-right: -34px; border: 1px solid #2e3328; border-radius: 8px; color: var(--ink); background: var(--secret); box-shadow: -7px 10px 17px #0008; transform: rotate(calc((var(--i, 0) - 2) * 3deg)); font: normal 800 1.65rem/1 var(--font-display), sans-serif; }
+.tutorial-facedown { display: grid; justify-items: center; gap: 18px; }
+.tutorial-facedown i { width: 120px; height: 170px; display: grid; place-items: center; border: 1px solid var(--accent-deep); border-radius: 8px; color: var(--accent); background: repeating-linear-gradient(45deg, #151b12 0 9px, #2d3726 9px 11px); font: normal 800 2.5rem/1 var(--font-display), sans-serif; }
+.tutorial-facedown strong { color: var(--text-secondary); font: 800 1.5rem/1 var(--font-display), sans-serif; }
+.tutorial-bluff-button { padding: 20px 30px; border: 2px solid #ff766b; border-radius: 8px; color: #ff8b82; background: #3a1210; box-shadow: 0 8px 0 #1d0807, 0 0 30px #dc493d40; font: 800 2.2rem/1 var(--font-display), sans-serif; }
+.tutorial-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center; }
+.tutorial-comparison span { display: grid; gap: 7px; min-width: 145px; padding: 18px; border: 1px solid var(--border); color: var(--text-muted); font: 500 .55rem/1 var(--font-secret), monospace; }
+.tutorial-comparison b { color: var(--text); font: 800 2.2rem/1 var(--font-display), sans-serif; }
+.tutorial-comparison strong { grid-column: 1 / -1; color: #ff8278; font: 800 2.2rem/1 var(--font-display), sans-serif; }
+.tutorial-counter, .tutorial-reward { display: grid; justify-items: center; gap: 8px; }
+.tutorial-counter strong { min-width: 155px; padding: 6px 20px; border-radius: 7px; color: var(--accent); background: #050805; text-align: center; font: 800 6.5rem/.9 var(--font-display), sans-serif; }
+.tutorial-counter span, .tutorial-reward span { color: var(--accent); font: 500 .62rem/1 var(--font-secret), monospace; letter-spacing: .14em; }
+.tutorial-reward { padding: 34px; border: 1px solid var(--accent-deep); background: #1e251a; }
+.tutorial-reward strong { font: 800 2.5rem/.9 var(--font-display), sans-serif; }
+
+@media (max-width: 700px) {
+  .v2-demo-table { height: 235px; }
+  .v2-demo-player .player-badge__name { display: none; }
+  .how-video { aspect-ratio: 4 / 3; }
+  .how-video__poster strong { font-size: 2.4rem; }
+  .tutorial-modal--v2 .tutorial-title { font-size: 2rem; }
+  .tutorial-modal--v2 .tutorial-stage { min-height: 250px; }
+  .tutorial-card-fan i { width: 75px; height: 112px; margin-right: -28px; }
+}
+
 .hero-actions .game-button {
   font-size: .75rem;
 }

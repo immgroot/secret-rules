@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type {
-  ButtonMode, MiniGameCapability, ObservableGameEvent, PrivateProgressSchema, RelationshipType,
+  ButtonCardKind, ButtonMode, MiniGameCapability, ObservableGameEvent, PrivateProgressSchema, RelationshipType,
   RuleCategory, RuleDifficulty, RuleParameters, RuleProgressType, RuleRarity,
   SecretRule, TargetSelector,
 } from "@secret-rules/shared";
@@ -17,7 +17,15 @@ export type RuleGenerationContext = {
   readonly target: ActivePlayer | null;
   readonly secondaryTarget: ActivePlayer | null;
   readonly plannedValue: number | null;
+  readonly buttonV2Balance?: ButtonV2BalanceContext;
   readonly random: RandomSource;
+};
+
+export type ButtonV2BalanceContext = {
+  readonly deckSize: number;
+  readonly target: number;
+  readonly expectedTurnsPerPlayer: number;
+  readonly cardCounts: Readonly<Record<ButtonCardKind, number>>;
 };
 
 export type RandomSource = {

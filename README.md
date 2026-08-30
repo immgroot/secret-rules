@@ -3,27 +3,27 @@
 A commercial browser party game for **4–10 players**. One public challenge,
 individual private objectives and conflicting incentives invite bluffing and chaos.
 
-## Current status: Phase 3.3 — Premium table + configurable round timer
+## Current status: Button V2 — playable hidden-card bluffing match
 
 Create a named private/public room, optionally password-protect/lock it, join as a
 player or spectator, chat, ready up and use validated room/player controls. The
 server owns unique colors, roles, AFK, removal, host transfer and every shared
 mutation. Refresh resumes the same player through a private room credential.
 
-The first full synchronized round is playable: the host starts The Button after
-4–10 active players ready up, each player receives and acknowledges one private
-Button rule, the server runs the countdown and the lobby-selected 30–300 second
-clock (80 seconds by default), and validated
-press intentions move one shared counter toward exactly 20. Private progress,
-hidden modifiers, resolution, reveal, reconnect, spectators, and another Button
-round all use the existing RoomOwner and Secret Rule Engine. The approved gameplay presents
-that round as a responsive tabletop with count-aware seats, a physical Button,
-focused rule reading, a compact HUD and overlay chat. The server enforces one
-shared recharge deadline and prevents the previous accepted actor from pressing
-again until someone else takes a turn. Gameplay now sits on one reusable,
-responsive physical table with dynamic perimeter seats, a centered mechanical
-counter and Button, a compact table log, overlay chat and the existing private
-Secret card interaction.
+The Button V2 is playable as a synchronized match. After 4–10 players ready up,
+the server shuffles a scaled deck, deals five private cards to each player,
+assigns one private Secret, chooses the starting seat and owns every timer and
+turn. On a turn, a player privately chooses a real card but publicly claims any
+valid card identity. The first eligible opponent may Call Bluff. The server
+reveals only challenged cards, applies challenge points and a private extra-card
+penalty, resolves number/effect cards, draws replacements and advances the turn.
+
+The shared counter must land on a configurable exact target. Reaching it awards
+server-owned target points and starts a private END/CONTINUE vote; tied votes use
+a server coin flip. CONTINUE grants exactly one rotation of Last Chance turns
+while the secured counter remains locked. Round reveals publish Secret results,
+score breakdowns and standings. The configured final round becomes match
+completion, after which the host can reset the same room back to its lobby.
 
 Round reveals now publish server-calculated additive point breakdowns and tied
 standings. The configured final round automatically becomes a real match-complete
@@ -31,11 +31,11 @@ screen with authoritative single or tied winners. The host may safely return the
 same room to the lobby; room identity, players, host, settings and chat remain,
 while scores, readiness, rounds, private rules and Button state reset.
 
-The homepage Button remains an isolated teaching animation. The room Button is
-server-authoritative. Match scoring is in-memory and resets in the lobby. No
+The homepage Button V2 sequence remains an isolated scripted teaching animation.
+The room game is server-authoritative. Match scoring is in-memory and resets in the lobby. No
 database, accounts, payments,
 matchmaking, public browser, voice, or second mini-game is implemented. Do not
-start Phase 4 without approval.
+start another mini-game or product phase without approval.
 Read [AGENTS.md](./AGENTS.md) before making changes.
 
 ## Stack and dependencies
@@ -58,7 +58,7 @@ No extra state manager, UI kit, realtime framework, database or test runner.
 | @types/node | 24.13.3 |
 | @types/react / @types/react-dom | 19.2.18 / 19.2.5 |
 
-Phase 3.3 installs no dependencies. It uses the existing browser/server stack and
+Button V2 installs no dependencies. It uses the existing browser/server stack and
 Node cryptography. The lockfile and package versions are unchanged.
 
 All packages remain private and UNLICENSED. Local third-party fonts retain their
@@ -131,7 +131,7 @@ apps/
     src/realtime/               # Socket.IO boundary and bounded limiter
     src/rooms/                  # One authoritative RoomOwner and public projection
     src/rules/                  # Server-only catalog, generator, graph, history and dev tools
-    src/games/button/           # Button pack, modifiers, events and evaluator adapter
+    src/games/button/           # V2 deck, movement, Secret pack and evaluator
     src/server.ts               # HTTP and realtime composition
     src/index.ts                # Startup/shutdown
     test/                       # Health/config, real clients, lifecycle/limiter tests
@@ -197,12 +197,12 @@ The origin allowlist and bounded in-process limits are not a DDoS defense.
 - [MULTIPLAYER.md](./docs/MULTIPLAYER.md): exact events, authority, lifecycle, privacy, limits and errors.
 - [PHASE_1_6.md](./docs/PHASE_1_6.md): historical lobby implementation and four-session test guide.
 - [SECRET_RULE_ENGINE.md](./docs/SECRET_RULE_ENGINE.md): Phase 2 rule models, privacy boundaries, generation and dev tools.
-- [BUTTON_GAME.md](./docs/BUTTON_GAME.md): The Button lifecycle, rules, modifiers, synchronization and reveal.
+- [BUTTON_GAME.md](./docs/BUTTON_GAME.md): Button V2 cards, challenge lifecycle, target vote, Last Chance and reveal.
 - [SCORING.md](./docs/SCORING.md): authoritative point formula, privacy timing, standings and reset.
-- [BUTTON_MAYHEM.md](./docs/BUTTON_MAYHEM.md): non-playable Mayhem mode design boundary.
+- [BUTTON_MAYHEM.md](./docs/BUTTON_MAYHEM.md): retired-mode boundary; Mayhem is not part of V2.
 - [GAME_DESIGN.md](./docs/GAME_DESIGN.md): product concept and open gameplay decisions.
 - [DESIGN_SYSTEM.md](./docs/DESIGN_SYSTEM.md): approved branding, tokens, components and accessibility.
 - [PHASE_0_6.md](./docs/PHASE_0_6.md): historical homepage interaction handoff.
 - [ROADMAP.md](./docs/ROADMAP.md): explicitly gated future work.
 
-**Stop at Phase 3.3. Phase 4, Mayhem gameplay and every additional mini-game require approval.**
+**Stop at Button V2. Balancing phases and every additional mini-game require explicit approval.**

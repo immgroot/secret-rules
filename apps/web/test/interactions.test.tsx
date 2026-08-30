@@ -23,19 +23,18 @@ test("chat renders hostile markup as literal text and personal mute removes it o
 
 function advance(state: DemoState) { return demoReducer(state, { type: "advance", run: state.run, from: state.stage }); }
 
-test("local demo follows one eleven-second script and stops at the teaching moment", () => {
+test("local Button V2 demo follows the isolated claim/challenge/reveal script", () => {
   let state = demoReducer(initialDemo, { type: "press" });
-  const counters: number[] = [];
+  const messages: string[] = [];
   let duration = 0;
   while (demoFrames[state.stage].next) {
-    counters.push(demoFrames[state.stage].counter);
+    messages.push(demoFrames[state.stage].message);
     duration += demoFrames[state.stage].delay;
     state = advance(state);
   }
-  assert.deepEqual(counters, [13, 14, 16, 16, 16]);
-  assert.equal(duration, 11_000);
+  assert.deepEqual(messages, ["YOU CLAIM +2", "LIV CALLS BLUFF", "ACTUAL CARD: -2", "BLUFF CAUGHT", "LIV +1 · YOU -1", "BUT WHY DID YOU BLUFF?"]);
+  assert.equal(duration, 7_550);
   assert.equal(state.stage, "complete");
-  assert.equal(demoFrames[state.stage].counter, 16);
   assert.equal(advance(state), state);
 });
 
@@ -44,10 +43,10 @@ test("repeat presses cannot accelerate the demo; reset rejects callbacks from a 
   assert.equal(demoReducer(state, { type: "press" }), state);
   const stale: DemoAction = { type: "advance", run: state.run, from: state.stage };
   state = demoReducer(state, { type: "reset" });
-  assert.equal(demoFrames[state.stage].counter, 12);
+  assert.equal(demoFrames[state.stage].message, "PLAY THE EXAMPLE");
   state = demoReducer(state, { type: "press" });
   assert.equal(demoReducer(state, stale), state);
-  assert.equal(demoReducer(state, { type: "advance", run: state.run, from: "milo" }), state);
+  assert.equal(demoReducer(state, { type: "advance", run: state.run, from: "flip" }), state);
 });
 
 test("reset works from every demo stage and scheduled work can be cancelled", () => {
@@ -57,23 +56,23 @@ test("reset works from every demo stage and scheduled work can be cancelled", ()
   let cancelled = false;
   let queued: (() => void) | undefined;
   const actions: DemoAction[] = [];
-  const cancel = scheduleDemoStep({ stage: "you", run: 8 }, (action) => actions.push(action), {
-    after(callback, delay) { assert.equal(delay, 1800); queued = callback; return () => { cancelled = true; }; },
+  const cancel = scheduleDemoStep({ stage: "claim", run: 8 }, (action) => actions.push(action), {
+    after(callback, delay) { assert.equal(delay, 1200); queued = callback; return () => { cancelled = true; }; },
   });
   cancel();
   assert.ok(cancelled);
   assert.deepEqual(actions, []);
   // Even a callback already queued by the browser carries its old run identity.
   queued?.();
-  assert.deepEqual(actions, [{ type: "advance", run: 8, from: "you" }]);
+  assert.deepEqual(actions, [{ type: "advance", run: 8, from: "claim" }]);
 });
 
 test("tutorial next/back are bounded and reopening resets to step one", () => {
   let step: TutorialStep = 0;
   assert.equal(tutorialReducer(step, "back"), 0);
   for (let i = 0; i < 8; i++) step = tutorialReducer(step, "next");
-  assert.equal(step, 3);
-  assert.equal(tutorialReducer(step, "back"), 2);
+  assert.equal(step, 7);
+  assert.equal(tutorialReducer(step, "back"), 6);
   assert.equal(tutorialReducer(step, "reset"), 0);
 });
 

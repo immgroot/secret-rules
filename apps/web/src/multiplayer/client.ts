@@ -10,7 +10,7 @@ import {
 } from "@secret-rules/shared";
 import { publicEnv } from "../config/env.ts";
 import { readRoomSession, saveRoomSession, type SessionStorage } from "./session.ts";
-import { INITIAL_LOBBY, newerSnapshot, type LobbySnapshot } from "./state.ts";
+import { INITIAL_LOBBY, newerPrivateState, newerSnapshot, type LobbySnapshot } from "./state.ts";
 import { readMutes, saveMutes } from "./mute.ts";
 import { observeActivity } from "./activity.ts";
 
@@ -110,9 +110,15 @@ export class LobbyClient {
     if (!this.credential || state.playerId !== this.credential.playerId) {
       this.patch({ error: protocolError("SERVER_ERROR") }); return;
     }
-    if (this.snapshot.room?.publicRound?.roundId !== state.roundId) { this.pendingPrivate = state; return; }
+    if (this.snapshot.room?.publicRound?.roundId !== state.roundId) {
+      if (!this.pendingPrivate || this.pendingPrivate.roundId !== state.roundId || state.revision > this.pendingPrivate.revision) this.pendingPrivate = state;
+      return;
+    }
+    const current = this.snapshot.privateRound;
+    const next = newerPrivateState(current, state, this.credential.playerId, this.snapshot.room.publicRound.roundId);
+    if (next === current) return;
     this.pendingPrivate = null;
-    this.patch({ privateRound: state });
+    this.patch({ privateRound: next });
   }
   private end(error: ServerError) {
     this.epoch++;
@@ -260,7 +266,12 @@ export class LobbyClient {
   requestState = () => this.send(EVENTS.requestState, {});
   startGame = () => this.send(EVENTS.startGame, {});
   acknowledgeRule = () => this.send(EVENTS.acknowledgeRule, {});
-  pressButton = () => this.send(EVENTS.buttonPress, {});
+  playCard = (input: StateCommandInput<typeof EVENTS.playCard>) => this.send(EVENTS.playCard, input);
+  callBluff = () => this.send(EVENTS.callBluff, {});
+  penaltyDiscard = (cardId: string) => this.send(EVENTS.penaltyDiscard, { cardId });
+  chooseWild = (movement: -2 | -1 | 1 | 2) => this.send(EVENTS.wildChoice, { movement });
+  voteOnTarget = (choice: "end" | "continue") => this.send(EVENTS.targetVote, { choice });
+  basicButton = () => this.send(EVENTS.basicButton, {});
   continueRound = () => this.send(EVENTS.continueRound, {});
   returnToLobby = () => this.send(EVENTS.returnToLobby, {});
   retry = () => { this.patch({ error: null }); if (this.socket?.connected && this.credential) void this.resume(); else this.getSocket().connect(); };

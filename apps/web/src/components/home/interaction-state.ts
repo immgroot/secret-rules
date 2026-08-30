@@ -1,7 +1,7 @@
-export type TutorialStep = 0 | 1 | 2 | 3;
+export type TutorialStep = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export function tutorialReducer(step: TutorialStep, action: "next" | "back" | "reset"): TutorialStep {
   if (action === "reset") return 0;
-  return Math.min(3, Math.max(0, step + (action === "next" ? 1 : -1))) as TutorialStep;
+  return Math.min(7, Math.max(0, step + (action === "next" ? 1 : -1))) as TutorialStep;
 }
 
 export type ExampleCardId = "a" | "b" | "c";

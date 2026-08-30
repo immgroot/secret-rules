@@ -7,9 +7,9 @@ import { usePreferences } from "../../preferences/provider.tsx";
 import { inspectCard, type ExampleCardId } from "./interaction-state.ts";
 
 const examples = [
-  { id: "a", ownerLabel: "PLAYER 01 / YOU", tone: "paper", rule: "DON’T LET IT\nHIT 13." },
-  { id: "b", ownerLabel: "PLAYER 02 / LIV", tone: "violet", rule: "MAKE IT HIT\nEXACTLY 13." },
-  { id: "c", ownerLabel: "PLAYER 03 / MILO", tone: "green", rule: "MILO MUST\nPRESS LAST." },
+  { id: "a", ownerLabel: "PLAYER 01 / YOU", tone: "paper", rule: "SUCCESSFULLY\nBLUFF 3 TIMES." },
+  { id: "b", ownerLabel: "PLAYER 02 / LIV", tone: "violet", rule: "CORRECTLY CATCH\n2 BLUFFS." },
+  { id: "c", ownerLabel: "PLAYER 03 / MILO", tone: "green", rule: "MAKE 3 TRUTHFUL\nCLAIMS." },
 ] as const;
 
 export function SecretCardScene() {

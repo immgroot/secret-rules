@@ -1,13 +1,15 @@
-import type { RuleDifficulty } from "@secret-rules/shared";
-
 export const SCORING_CONFIG: Readonly<{
-  secretRuleSuccess: number;
-  publicChallengeSuccess: number;
-  difficultyBonus: Readonly<Record<RuleDifficulty, number>>;
-  eligibleWildBonus: number;
+  challengeWin: number;
+  challengeLoss: number;
+  standardSecret: number;
+  hardSecret: number;
+  targetLanding: number;
+  targetOther: number;
 }> = Object.freeze({
-  secretRuleSuccess: 3,
-  publicChallengeSuccess: 1,
-  difficultyBonus: Object.freeze({ easy: 0, medium: 0, hard: 1 }),
-  eligibleWildBonus: 2,
+  challengeWin: 1,
+  challengeLoss: 1,
+  standardSecret: 3,
+  hardSecret: 5,
+  targetLanding: 2,
+  targetOther: 1,
 });

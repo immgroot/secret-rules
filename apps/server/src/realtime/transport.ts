@@ -20,9 +20,9 @@ export interface RealtimeOptions {
   maxRooms?: number;
   afkMs?: number;
   buttonCountdownMs?: number;
-  buttonDurationMs?: number;
-  buttonResolutionMs?: number;
-  buttonRechargeMs?: number;
+  turnTimerMs?: number;
+  challengeTimerMs?: number;
+  challengeRevealMs?: number;
 }
 
 export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions) {
@@ -47,9 +47,9 @@ export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions)
     ...(options.maxRooms === undefined ? {} : { maxRooms: options.maxRooms }),
     ...(options.afkMs === undefined ? {} : { afkMs: options.afkMs }),
     ...(options.buttonCountdownMs === undefined ? {} : { buttonCountdownMs: options.buttonCountdownMs }),
-    ...(options.buttonDurationMs === undefined ? {} : { buttonDurationMs: options.buttonDurationMs }),
-    ...(options.buttonResolutionMs === undefined ? {} : { buttonResolutionMs: options.buttonResolutionMs }),
-    ...(options.buttonRechargeMs === undefined ? {} : { buttonRechargeMs: options.buttonRechargeMs }),
+    ...(options.turnTimerMs === undefined ? {} : { turnTimerMs: options.turnTimerMs }),
+    ...(options.challengeTimerMs === undefined ? {} : { challengeTimerMs: options.challengeTimerMs }),
+    ...(options.challengeRevealMs === undefined ? {} : { challengeRevealMs: options.challengeRevealMs }),
     publish(state, recipients) {
       const payload = PublicRoomSnapshotSchema.parse(state);
       // Direct allowlisted fanout. No client-selected transport group can authorize a recipient.
@@ -184,7 +184,12 @@ export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions)
     socket.on(EVENTS.report, (input, reply) => respond(StateResultSchema, reply, () => rooms.reportPlayer(socket.id, input)));
     socket.on(EVENTS.startGame, (input, reply) => respond(StateResultSchema, reply, () => rooms.startGame(socket.id, input)));
     socket.on(EVENTS.acknowledgeRule, (input, reply) => respond(StateResultSchema, reply, () => rooms.acknowledgeRule(socket.id, input)));
-    socket.on(EVENTS.buttonPress, (input, reply) => respond(StateResultSchema, reply, () => rooms.pressButton(socket.id, input)));
+    socket.on(EVENTS.playCard, (input, reply) => respond(StateResultSchema, reply, () => rooms.playCard(socket.id, input)));
+    socket.on(EVENTS.callBluff, (input, reply) => respond(StateResultSchema, reply, () => rooms.callBluff(socket.id, input)));
+    socket.on(EVENTS.penaltyDiscard, (input, reply) => respond(StateResultSchema, reply, () => rooms.penaltyDiscard(socket.id, input)));
+    socket.on(EVENTS.wildChoice, (input, reply) => respond(StateResultSchema, reply, () => rooms.chooseWild(socket.id, input)));
+    socket.on(EVENTS.targetVote, (input, reply) => respond(StateResultSchema, reply, () => rooms.targetVote(socket.id, input)));
+    socket.on(EVENTS.basicButton, (input, reply) => respond(StateResultSchema, reply, () => rooms.basicButton(socket.id, input)));
     socket.on(EVENTS.continueRound, (input, reply) => respond(StateResultSchema, reply, () => rooms.continueRound(socket.id, input)));
     socket.on(EVENTS.returnToLobby, (input, reply) => respond(StateResultSchema, reply, () => rooms.returnToLobby(socket.id, input)));
     socket.on(EVENTS.leave, (input, reply) => respond(LeaveResultSchema, reply, () => {

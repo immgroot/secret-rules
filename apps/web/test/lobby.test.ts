@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import {
-  BUTTON_ROUND_DURATION_PRESETS, CreateRoomSchema, DisplayNameSchema, RoomCodeSchema, RoomSettingsSchema,
-  PublicRoomSnapshotSchema, DEFAULT_ROOM_SETTINGS, SessionGrantSchema, SessionResultSchema,
+  BUTTON_DECK_PRESETS, CHALLENGE_TIMER_PRESETS, CreateRoomSchema, DisplayNameSchema, RoomCodeSchema, RoomSettingsSchema,
+  PrivatePlayerRoundStateSchema, PublicRoomSnapshotSchema, DEFAULT_ROOM_SETTINGS, SessionGrantSchema, SessionResultSchema, TURN_TIMER_PRESETS,
+  effectiveDeckSize, minimumCustomDeckSize, recommendedButtonTarget,
 } from "@secret-rules/shared";
-import { newerSnapshot } from "../src/multiplayer/state.ts";
+import { newerPrivateState, newerSnapshot } from "../src/multiplayer/state.ts";
 import { readRoomSession, saveRoomSession, ROOM_SESSION_KEY } from "../src/multiplayer/session.ts";
 import { readMutes, saveMutes } from "../src/multiplayer/mute.ts";
 import { observeActivity } from "../src/multiplayer/activity.ts";
@@ -71,6 +72,28 @@ test("room snapshots reject stale versions, foreign rooms and missing membership
   assert.equal(newerSnapshot(null, newer, roomId, randomUUID()), null);
 });
 
+test("private round deliveries reject stale revisions, foreign recipients and foreign rounds", () => {
+  const roundId = randomUUID();
+  const current = PrivatePlayerRoundStateSchema.parse({
+    roundId, roundNumber: 1, miniGameId: "the-button-v2", playerId, revision: 7, hand: [],
+    secretRule: {
+      id: randomUUID(), templateId: "BUTTON_V2_BLUFF_SUCCESS", identity: `BUTTON_V2_BLUFF_SUCCESS:${playerId}`,
+      miniGameId: "the-button-v2", category: "personal", rarity: "common", difficulty: "medium",
+      parameters: { actionCount: 3 }, conflictTags: [], compatibilityTags: [], incompatibilityTags: [],
+      description: "SUCCESSFULLY BLUFF 3 TIMES.", shortDescription: "BLUFF 3 TIMES.", progressType: "counter",
+      rewardWeight: 1, visibility: "private", evaluatorId: "rule:button-v2-bluff-success",
+    },
+    privateProgress: { status: "in_progress", current: 0, target: 3, summary: "0 / 3" },
+    privateTargetPlayerId: null, acknowledgedAt: null, inspections: [], pendingChoice: null,
+  });
+  assert.equal(newerPrivateState(current, { ...current, revision: 6 }, playerId, roundId), current);
+  assert.equal(newerPrivateState(current, { ...current, revision: 7 }, playerId, roundId), current);
+  const newer = { ...current, revision: 8 };
+  assert.equal(newerPrivateState(current, newer, playerId, roundId), newer);
+  assert.equal(newerPrivateState(current, { ...newer, playerId: randomUUID() }, playerId, roundId), current);
+  assert.equal(newerPrivateState(current, { ...newer, roundId: randomUUID() }, playerId, roundId), current);
+});
+
 test("room credentials survive refresh in one tab, contain no profile, and clear on leave", () => {
   const values = new Map<string, string>();
   const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
@@ -103,14 +126,18 @@ test("shared payload validation normalizes names/codes and rejects client author
   assert.equal(PublicRoomSnapshotSchema.safeParse({ ...state, credential: "nope" }).success, false);
 });
 
-test("Button round duration defaults to 80 seconds and accepts only whole seconds from 30 through 300", () => {
+test("Button V2 settings default safely, scale decks and validate target and timer bounds", () => {
   const legacySettings = { maxPlayers: 10, roundCount: 7, chaos: "normal" };
-  assert.equal(RoomSettingsSchema.parse(legacySettings).buttonRoundDurationSeconds, 80);
-  assert.deepEqual(BUTTON_ROUND_DURATION_PRESETS, [60, 80, 120, 180]);
-  for (const seconds of [30, ...BUTTON_ROUND_DURATION_PRESETS, 45, 300]) {
-    assert.equal(RoomSettingsSchema.safeParse({ ...DEFAULT_ROOM_SETTINGS, buttonRoundDurationSeconds: seconds }).success, true);
-  }
-  for (const seconds of [29, 30.5, 301, Number.NaN, Infinity]) {
-    assert.equal(RoomSettingsSchema.safeParse({ ...DEFAULT_ROOM_SETTINGS, buttonRoundDurationSeconds: seconds }).success, false);
-  }
+  assert.deepEqual(RoomSettingsSchema.parse(legacySettings), { ...legacySettings, buttonDeckPreset: "standard", buttonCustomDeckSize: 50, buttonTarget: null, turnTimerSeconds: 15, challengeTimerSeconds: 10 });
+  assert.deepEqual(BUTTON_DECK_PRESETS, ["quick", "standard", "long", "epic", "custom"]);
+  assert.deepEqual(TURN_TIMER_PRESETS, [10, 15, 20, 30]);
+  assert.deepEqual(CHALLENGE_TIMER_PRESETS, [5, 10, 15, 20]);
+  assert.equal(effectiveDeckSize("standard", 4, 50), 50);
+  assert.equal(effectiveDeckSize("standard", 10, 50), 100);
+  assert.equal(minimumCustomDeckSize(10), 60);
+  assert.equal(recommendedButtonTarget("standard", 4, 50), 30);
+  for (const settings of [
+    { buttonTarget: 9 }, { buttonTarget: 201 }, { buttonCustomDeckSize: 29 }, { buttonCustomDeckSize: 201 },
+    { turnTimerSeconds: 4 }, { turnTimerSeconds: 61 }, { challengeTimerSeconds: 2 }, { challengeTimerSeconds: 31 },
+  ]) assert.equal(RoomSettingsSchema.safeParse({ ...DEFAULT_ROOM_SETTINGS, ...settings }).success, false);
 });

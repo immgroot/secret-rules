@@ -39,9 +39,13 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   NOT_READY: "Four to ten connected active players must all be ready before the game can start.",
   ROUND_NOT_PREPARED: "There is no prepared Secret Rule round for that action.",
   INVALID_GAME_PHASE: "That action is not available during this part of the round.",
-  ACTION_REJECTED: "That Button press was not accepted.",
-  BUTTON_RECHARGING: "The Button is recharging.",
-  BUTTON_REPEAT_LOCKED: "Wait for another player to press.",
+  ACTION_REJECTED: "That game action was not accepted.",
+  NOT_YOUR_TURN: "Wait for your turn before playing.",
+  CARD_NOT_FOUND: "That card is not in your current hand.",
+  CHALLENGE_CLOSED: "The challenge window has already closed.",
+  CHOICE_REQUIRED: "Finish your private game choice before play can continue.",
+  VOTE_ALREADY_CAST: "Your vote for this target decision is already locked.",
+  BASIC_ACTION_UNAVAILABLE: "The Basic Button action is available only when normal card play is exhausted.",
 };
 
 export function protocolError(code: ErrorCode): ServerError {

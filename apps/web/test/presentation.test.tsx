@@ -67,16 +67,24 @@ test("room code is display-only and toast supports accessible persistent feedbac
   assert.match(toast, /Dismiss notification/);
 });
 
-test("homepage preserves the isolated demo and presents real lobby entry controls", () => {
+test("homepage presents isolated Button V2 teaching, full rules entry, and a graceful missing-video poster", () => {
   const html = renderToStaticMarkup(<AppProviders><HomePage /></AppProviders>);
   assert.match(html, /Public examples\. Real rules stay private\./);
   assert.match(html, /LOCAL DEMO · NO MULTIPLAYER/);
-  assert.match(html, /aria-label="Demo counter: 12"/);
-  assert.match(html, /aria-label="Press the demo button"/);
+  assert.match(html, /The Button V2 isolated local demo/);
+  assert.match(html, /PLAY THE EXAMPLE/);
   assert.match(html, /SAME GAME\. DIFFERENT RULES\./);
-  assert.ok(!html.includes("A PARTY GAME OF HIDDEN AGENDAS"));
-  assert.match(html, /RESET DEMO/);
-  assert.match(html, /THE BUTTON IS LIVE\. BRING 4–10 FRIENDS/);
+  assert.match(html, /PLAY HIDDEN CARDS/);
+  assert.match(html, /CLAIM ANYTHING/);
+  assert.match(html, /CALL THEIR BLUFF/);
+  assert.match(html, /FOLLOW YOUR SECRET RULE/);
+  assert.match(html, /PLAY DEMO/);
+  assert.match(html, /THE BUTTON V2 IS LIVE\. BRING 4–10 FRIENDS/);
+  assert.match(html, /SEE IT IN ACTION/);
+  assert.match(html, /HOW TO PLAY VIDEO/);
+  assert.match(html, /COMING SOON/);
+  assert.match(html, /\/videos\/how-to-play\.mp4/);
+  assert.match(html, /kind="captions"/);
   assert.ok(!html.includes("<form"));
   assert.ok(!html.includes("<iframe"));
 });

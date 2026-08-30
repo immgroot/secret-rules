@@ -1,12 +1,16 @@
 import type { MatchStanding, PrivatePlayerRoundState, RoundScore } from "@secret-rules/shared";
 import { SCORING_CONFIG } from "./config.ts";
 
-export function secretRuleSucceeded(state: PrivatePlayerRoundState) {
-  if (state.secretRule.category === "private_knowledge") return false;
-  if (state.secretRule.category === "hidden_ability") {
-    return state.hiddenAbilities.length > 0 && state.hiddenAbilities.every((ability) => ability.usesRemaining === 0);
-  }
-  return state.privateProgress.status === "completed";
+export type PlayerRoundLedger = { challengePoints: number; challengePenalties: number; targetPoints: number };
+
+export function createRoundLedger(playerIds: readonly string[]) {
+  return new Map(playerIds.map((playerId) => [playerId, { challengePoints: 0, challengePenalties: 0, targetPoints: 0 } satisfies PlayerRoundLedger]));
+}
+
+export function applyScoreDelta(scores: Map<string, number>, playerId: string, delta: number) {
+  const next = Math.max(0, (scores.get(playerId) ?? 0) + delta);
+  scores.set(playerId, next);
+  return next;
 }
 
 export function rankedStandings(scores: ReadonlyMap<string, number>): MatchStanding[] {
@@ -21,28 +25,25 @@ export function rankedStandings(scores: ReadonlyMap<string, number>): MatchStand
   });
 }
 
-export function scoreRound(input: {
+export function scoreButtonV2Round(input: {
   roundNumber: number;
   assignments: ReadonlyMap<string, PrivatePlayerRoundState>;
-  previousScores: ReadonlyMap<string, number>;
+  liveScores: ReadonlyMap<string, number>;
+  ledgers: ReadonlyMap<string, PlayerRoundLedger>;
   publicChallengeSucceeded: boolean;
-  wildBonusEligible: (templateId: string) => boolean;
 }) {
-  const nextScores = new Map(input.previousScores);
+  const nextScores = new Map(input.liveScores);
   const entries = [...input.assignments.values()].map((state) => {
-    const success = secretRuleSucceeded(state);
-    const secretRulePoints = success ? SCORING_CONFIG.secretRuleSuccess : 0;
-    const difficultyBonusPoints = success ? SCORING_CONFIG.difficultyBonus[state.secretRule.difficulty] : 0;
-    const wildBonusPoints = success && state.secretRule.rarity === "wild" && input.wildBonusEligible(state.secretRule.templateId)
-      ? SCORING_CONFIG.eligibleWildBonus : 0;
-    const publicChallengePoints = input.publicChallengeSucceeded ? SCORING_CONFIG.publicChallengeSuccess : 0;
-    const roundTotal = secretRulePoints + difficultyBonusPoints + wildBonusPoints + publicChallengePoints;
-    const matchTotal = (nextScores.get(state.playerId) ?? 0) + roundTotal;
-    nextScores.set(state.playerId, matchTotal);
+    const success = state.privateProgress.status === "completed";
+    const secretDifficulty = state.secretRule.difficulty === "hard" ? "hard" as const : "standard" as const;
+    const secretPoints = success ? secretDifficulty === "hard" ? SCORING_CONFIG.hardSecret : SCORING_CONFIG.standardSecret : 0;
+    applyScoreDelta(nextScores, state.playerId, secretPoints);
+    const ledger = input.ledgers.get(state.playerId) ?? { challengePoints: 0, challengePenalties: 0, targetPoints: 0 };
     return {
-      playerId: state.playerId,
-      secretRuleResult: state.secretRule.category === "private_knowledge" ? "information_only" as const : success ? "success" as const : "failed" as const,
-      secretRulePoints, difficultyBonusPoints, wildBonusPoints, publicChallengePoints, roundTotal, matchTotal,
+      playerId: state.playerId, secretRuleResult: success ? "success" as const : "failed" as const, secretDifficulty,
+      challengePoints: ledger.challengePoints, challengePenalties: ledger.challengePenalties, targetPoints: ledger.targetPoints,
+      secretPoints, roundTotal: ledger.challengePoints - ledger.challengePenalties + ledger.targetPoints + secretPoints,
+      matchTotal: nextScores.get(state.playerId) ?? 0,
     };
   });
   const roundScore: RoundScore = {

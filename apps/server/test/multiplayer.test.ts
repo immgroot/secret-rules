@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { io, type Socket } from "socket.io-client";
 import type { z } from "zod";
 import {
-  EVENTS, PROTOCOL_VERSION, PublicRoomSnapshotSchema, PrivateRoundDeliverySchema, SessionResultSchema, StateResultSchema,
+  DEFAULT_ROOM_SETTINGS, EVENTS, PROTOCOL_VERSION, PublicRoomSnapshotSchema, PrivateRoundDeliverySchema, SessionResultSchema, StateResultSchema,
   LeaveResultSchema, ServerErrorSchema, type PrivatePlayerRoundState, type PublicRoomSnapshot, type ServerToClientEvents,
   type ServerError, type SessionResult,
 } from "@secret-rules/shared";
@@ -82,7 +82,7 @@ test("four real clients synchronize players, ready, settings, disconnect and sta
   assert.ok((await call(b, EVENTS.ready, { ...command(roomId), ready: true }, StateResultSchema)).ok);
   await eventually(() => [a, b, c, d].every((peer) => peer.states.at(-1)?.players.find((p) => p.playerId === bSession.session.playerId)?.ready === true));
   assert.ok((await call(c, EVENTS.ready, { ...command(roomId), ready: true }, StateResultSchema)).ok);
-  assert.ok((await call(a, EVENTS.settings, { ...command(roomId), settings: { maxPlayers: 10, roundCount: 7, chaos: "chaos", buttonRoundDurationSeconds: 80 } }, StateResultSchema)).ok);
+  assert.ok((await call(a, EVENTS.settings, { ...command(roomId), settings: { ...DEFAULT_ROOM_SETTINGS, maxPlayers: 10, roundCount: 7, chaos: "chaos" } }, StateResultSchema)).ok);
   await eventually(() => [a, b, c, d].every((peer) => peer.states.at(-1)?.settings.roundCount === 7));
   c.socket.disconnect();
   await eventually(() => [a, b, d].every((peer) => peer.states.at(-1)?.players.find((p) => p.playerId === cSession.session.playerId)?.connected === false));
@@ -119,7 +119,7 @@ test("validation, authorization, capacity, names and private session boundaries"
   const guest = success(await call(b, EVENTS.join, { ...person("Guest"), roomCode: host.state.roomCode }, SessionResultSchema));
   const hostileReady = await call(b, EVENTS.ready, { ...command(roomId), ready: true, playerId: host.session.playerId }, StateResultSchema);
   assert.ok(!hostileReady.ok); assert.equal(hostileReady.error.code, "INVALID_PAYLOAD");
-  const settings = { maxPlayers: 4, roundCount: 3, chaos: "normal", buttonRoundDurationSeconds: 80 };
+  const settings = { ...DEFAULT_ROOM_SETTINGS, maxPlayers: 4, roundCount: 3 as const, chaos: "normal" as const };
   const nonHost = await call(b, EVENTS.settings, { ...command(roomId), settings }, StateResultSchema);
   assert.ok(!nonHost.ok); assert.equal(nonHost.error.code, "NOT_HOST");
   const unauthorized = await call(outsider, EVENTS.requestState, command(roomId), StateResultSchema);
@@ -258,7 +258,7 @@ test("ten players fit; an eleventh and capacity reductions below occupied seats 
   const outsider = await connect();
   const full = await call(outsider, EVENTS.join, { ...person("Eleventh"), roomCode: host.state.roomCode }, SessionResultSchema);
   assert.ok(!full.ok); assert.equal(full.error.code, "ROOM_FULL");
-  const shrink = await call(hostPeer, EVENTS.settings, { ...command(host.state.roomId), settings: { maxPlayers: 9, roundCount: 7, chaos: "chill", buttonRoundDurationSeconds: 80 } }, StateResultSchema);
+  const shrink = await call(hostPeer, EVENTS.settings, { ...command(host.state.roomId), settings: { ...DEFAULT_ROOM_SETTINGS, maxPlayers: 9, roundCount: 7, chaos: "chill" } }, StateResultSchema);
   assert.ok(!shrink.ok); assert.equal(shrink.error.code, "SETTINGS_CONFLICT");
   const state = await call(hostPeer, EVENTS.requestState, command(host.state.roomId), StateResultSchema);
   assert.ok(state.ok); assert.equal(state.state.players.length, 10);
@@ -358,7 +358,7 @@ test("manual host transfer revokes all old host powers and spectators cannot bec
   const actions = [
     [EVENTS.visibility, { visibility: "public" }], [EVENTS.lock, { locked: true }],
     [EVENTS.password, { enabled: false }], [EVENTS.name, { roomName: "Changed" }],
-    [EVENTS.settings, { settings: { maxPlayers: 4, roundCount: 7, chaos: "chill", buttonRoundDurationSeconds: 80 } }],
+    [EVENTS.settings, { settings: { ...DEFAULT_ROOM_SETTINGS, maxPlayers: 4, roundCount: 7, chaos: "chill" } }],
     [EVENTS.kick, { targetPlayerId: spectator.session.playerId }], [EVENTS.transfer, { targetPlayerId: host.session.playerId }],
   ] as const;
   for (const [event, input] of actions) {
@@ -400,7 +400,7 @@ test("spectators have separate capacity, cannot ready, and role changes reset re
   const a = await connect();
   const host = success(await call(a, EVENTS.create, person("Host"), SessionResultSchema));
   const roomId = host.state.roomId;
-  assert.ok((await call(a, EVENTS.settings, { ...command(roomId), settings: { maxPlayers: 4, roundCount: 7, chaos: "normal", buttonRoundDurationSeconds: 80 } }, StateResultSchema)).ok);
+  assert.ok((await call(a, EVENTS.settings, { ...command(roomId), settings: { ...DEFAULT_ROOM_SETTINGS, maxPlayers: 4, roundCount: 7, chaos: "normal" } }, StateResultSchema)).ok);
   const players: Peer[] = [];
   for (let i = 0; i < 3; i++) {
     const p = await connect(); players.push(p);
@@ -471,108 +471,37 @@ test("chat is room-local, bounded by rate limits and deduplicated; reports remai
   assert.ok(spam.some((result) => !result.ok && result.error.code === "RATE_LIMITED"));
 });
 
-test("Button timer presets and custom values synchronize while client timer authority is rejected", async (context) => {
-  const { connect } = await setup(context, { buttonCountdownMs: 25, sweepMs: 5 });
+test("Button V2 deck, target, turn and challenge settings synchronize and reject client timer authority", async (context) => {
+  const { connect } = await setup(context, { buttonCountdownMs: 20, sweepMs: 5 });
   const [a, b, c, d] = await Promise.all([connect(), connect(), connect(), connect()]);
   const host = success(await call(a, EVENTS.create, person("Aster"), SessionResultSchema));
-  await call(b, EVENTS.join, { ...person("Birch"), roomCode: host.state.roomCode }, SessionResultSchema);
-  await call(c, EVENTS.join, { ...person("Cedar"), roomCode: host.state.roomCode }, SessionResultSchema);
-  await call(d, EVENTS.join, { ...person("Dune"), roomCode: host.state.roomCode }, SessionResultSchema);
+  for (const [peer, name] of [[b, "Birch"], [c, "Cedar"], [d, "Dune"]] as const) await call(peer, EVENTS.join, { ...person(name), roomCode: host.state.roomCode }, SessionResultSchema);
   const roomId = host.state.roomId;
-  const peers = [a, b, c, d];
-  for (const seconds of [60, 80, 120, 180, 45]) {
-    const settings = { maxPlayers: 10, roundCount: 7, chaos: "normal", buttonRoundDurationSeconds: seconds };
-    assert.ok((await call(a, EVENTS.settings, { ...command(roomId), settings }, StateResultSchema)).ok);
-    await eventually(() => peers.every((peer) => peer.states.at(-1)?.settings.buttonRoundDurationSeconds === seconds));
-  }
-  const nonHost = await call(b, EVENTS.settings, { ...command(roomId), settings: { maxPlayers: 10, roundCount: 7, chaos: "normal", buttonRoundDurationSeconds: 60 } }, StateResultSchema);
+  const configured = { ...DEFAULT_ROOM_SETTINGS, buttonDeckPreset: "custom" as const, buttonCustomDeckSize: 60, buttonTarget: 37, turnTimerSeconds: 20, challengeTimerSeconds: 5, roundCount: 3 as const };
+  assert.ok((await call(a, EVENTS.settings, { ...command(roomId), settings: configured }, StateResultSchema)).ok);
+  await eventually(() => [a, b, c, d].every((peer) => peer.states.at(-1)?.settings.buttonTarget === 37 && peer.states.at(-1)?.settings.challengeTimerSeconds === 5));
+  const nonHost = await call(b, EVENTS.settings, { ...command(roomId), settings: { ...configured, buttonTarget: 38 } }, StateResultSchema);
   assert.ok(!nonHost.ok); assert.equal(nonHost.error.code, "NOT_HOST");
-  for (const seconds of [29, 47.5, 301]) {
-    const invalid = await call(a, EVENTS.settings, { ...command(roomId), settings: { maxPlayers: 10, roundCount: 7, chaos: "normal", buttonRoundDurationSeconds: seconds } }, StateResultSchema);
-    assert.ok(!invalid.ok); assert.equal(invalid.error.code, "INVALID_PAYLOAD");
+  for (const invalid of [
+    { ...configured, buttonCustomDeckSize: 29 }, { ...configured, buttonTarget: 201 },
+    { ...configured, turnTimerSeconds: 0 }, { ...configured, challengeTimerSeconds: 31 },
+  ]) {
+    const result = await call(a, EVENTS.settings, { ...command(roomId), settings: invalid }, StateResultSchema);
+    assert.ok(!result.ok); assert.equal(result.error.code, "INVALID_PAYLOAD");
   }
-  for (const peer of peers) assert.ok((await call(peer, EVENTS.ready, { ...command(roomId), ready: true }, StateResultSchema)).ok);
-  assert.ok((await call(a, EVENTS.startGame, command(roomId), StateResultSchema)).ok);
-  for (const peer of peers) assert.ok((await call(peer, EVENTS.acknowledgeRule, command(roomId), StateResultSchema)).ok);
-  await eventually(() => peers.every((peer) => peer.states.at(-1)?.publicRound?.phase === "playing"));
-  const expectedTimer = a.states.at(-1)?.publicRound?.publicTimer;
-  assert.equal(expectedTimer?.durationMs, 45_000);
-  assert.ok(peers.every((peer) => peer.states.at(-1)?.publicRound?.publicTimer?.deadlineAt === expectedTimer?.deadlineAt));
-  const locked = await call(a, EVENTS.settings, { ...command(roomId), settings: { maxPlayers: 10, roundCount: 7, chaos: "normal", buttonRoundDurationSeconds: 60 } }, StateResultSchema);
-  assert.ok(!locked.ok); assert.equal(locked.error.code, "GAME_ALREADY_STARTED");
-  const forgedPress = await call(b, EVENTS.buttonPress, { ...command(roomId), durationMs: 1, deadlineAt: 1 }, StateResultSchema);
-  assert.ok(!forgedPress.ok); assert.equal(forgedPress.error.code, "INVALID_PAYLOAD");
-  const fakeTimeout = await call(b, "timer:expired", command(roomId), StateResultSchema);
-  assert.ok(!fakeTimeout.ok); assert.equal(fakeTimeout.error.code, "INVALID_PAYLOAD");
-  assert.equal(a.states.at(-1)?.publicRound?.publicGameState.counter, 0);
-});
-
-test("private rules reach only their authenticated player and survive gameplay reconnect", async (context) => {
-  const { connect } = await setup(context);
-  const [a, b, c, d, spectator] = await Promise.all([connect(), connect(), connect(), connect(), connect()]);
-  const host = success(await call(a, EVENTS.create, person("Groot"), SessionResultSchema));
-  const joins: Extract<SessionResult, { ok: true }>[] = [];
-  for (const [peer, name] of [[b, "Estriz"], [c, "Milo"], [d, "June"]] as const) joins.push(success(await call(peer, EVENTS.join, { ...person(name), roomCode: host.state.roomCode }, SessionResultSchema)));
-  const watching = success(await call(spectator, EVENTS.join, { ...person("Watcher"), roomCode: host.state.roomCode, role: "spectator" }, SessionResultSchema));
-  const roomId = host.state.roomId;
-  const nonHost = await call(b, EVENTS.startGame, command(roomId), StateResultSchema);
-  assert.ok(!nonHost.ok); assert.equal(nonHost.error.code, "NOT_HOST");
   for (const peer of [a, b, c, d]) assert.ok((await call(peer, EVENTS.ready, { ...command(roomId), ready: true }, StateResultSchema)).ok);
-  const prepared = await call(a, EVENTS.startGame, command(roomId), StateResultSchema);
-  assert.ok(prepared.ok); assert.equal(prepared.state.status, "in_game");
-  assert.equal(prepared.state.publicRound?.phase, "waiting_for_rule_ack");
-  assert.ok(prepared.state.publicRound); assert.equal(prepared.state.publicRound.publicPlayerStatuses.length, 4);
-  await eventually(() => [a, b, c, d].every((peer) => peer.privateStates.length === 1), "Private states were not delivered");
-  assert.equal(spectator.privateStates.length, 0);
-  const sessions = [host, ...joins];
-  for (const [index, peer] of [a, b, c, d].entries()) {
-    const privateState = peer.privateStates[0]!;
-    assert.equal(privateState?.playerId, sessions[index]!.session.playerId);
-    assert.equal(privateState?.roundId, prepared.state.publicRound.roundId);
-    assert.equal(privateState?.secretRule.visibility, "private");
-    assert.equal(Object.hasOwn(privateState ?? {}, "allSecretRules"), false);
-    for (const [otherIndex, other] of [a, b, c, d].entries()) if (otherIndex !== index) {
-      assert.notEqual(privateState?.secretRule.id, other.privateStates[0]?.secretRule.id);
-      assert.equal(JSON.stringify(privateState).includes(other.privateStates[0]?.secretRule.id ?? "missing"), false);
-    }
-  }
-  for (const peer of [a, b, c, d, spectator]) {
-    const wire = JSON.stringify(peer.states.at(-1));
-    assert.equal(/secretRule|templateId|generationSeed|relationshipGraph|conflictTags|evaluatorId/.test(wire), false);
-  }
-  const forgedAck = await call(a, EVENTS.acknowledgeRule, { ...command(roomId), targetPlayerId: joins[0]!.session.playerId }, StateResultSchema);
-  assert.ok(!forgedAck.ok); assert.equal(forgedAck.error.code, "INVALID_PAYLOAD");
-  const spectatorAck = await call(spectator, EVENTS.acknowledgeRule, command(roomId), StateResultSchema);
-  assert.ok(!spectatorAck.ok); assert.equal(spectatorAck.error.code, "PLAYER_ONLY");
-  assert.ok((await call(a, EVENTS.acknowledgeRule, command(roomId), StateResultSchema)).ok);
-  await eventually(() => a.privateStates.at(-1)?.acknowledgedAt !== null);
-  const privateCounts = [a, b, c, d].map((peer) => peer.privateStates.length);
-  const transferDuringGame = await call(a, EVENTS.transfer, { ...command(roomId), targetPlayerId: joins[0]!.session.playerId }, StateResultSchema);
-  assert.ok(!transferDuringGame.ok); assert.equal(transferDuringGame.error.code, "INVALID_GAME_PHASE");
-  assert.deepEqual([a, b, c, d].map((peer) => peer.privateStates.length), privateCounts);
-
-  const originalC = c.privateStates[0]!;
-  c.socket.disconnect();
-  await eventually(() => a.states.at(-1)?.publicRound?.publicPlayerStatuses.find((status) => status.playerId === joins[1]!.session.playerId)?.connected === false);
-  const restored = await connect();
-  const credential = { roomId, playerId: joins[1]!.session.playerId, token: joins[1]!.session.token };
-  success(await call(restored, EVENTS.resume, { ...request(), credential }, SessionResultSchema));
-  await eventually(() => restored.privateStates.length === 1);
-  assert.equal(restored.privateStates[0]?.secretRule.id, originalC.secretRule.id);
-  assert.equal(restored.privateStates[0]?.secretRule.identity, originalC.secretRule.identity);
-  assert.equal(spectator.privateStates.length, 0);
-  assert.equal(watching.session.playerId, spectator.states.at(-1)?.players.find((player) => player.role === "spectator")?.playerId);
-
-  const earlyContinue = await call(a, EVENTS.continueRound, command(roomId), StateResultSchema);
-  assert.ok(!earlyContinue.ok); assert.equal(earlyContinue.error.code, "INVALID_GAME_PHASE");
-  assert.equal(spectator.privateStates.length, 0);
+  assert.ok((await call(a, EVENTS.startGame, command(roomId), StateResultSchema)).ok);
+  const locked = await call(a, EVENTS.settings, { ...command(roomId), settings: configured }, StateResultSchema);
+  assert.ok(!locked.ok); assert.equal(locked.error.code, "GAME_ALREADY_STARTED");
+  const forged = await call(b, EVENTS.playCard, { ...command(roomId), cardId: randomUUID(), claim: "PLUS_ONE", counter: 37, deadlineAt: 1 }, StateResultSchema);
+  assert.ok(!forged.ok); assert.equal(forged.error.code, "INVALID_PAYLOAD");
 });
 
-test("four Socket.IO clients and a spectator converge on authoritative paced Button presses without leaking private progress", async (context) => {
-  const { connect } = await setup(context, { buttonCountdownMs: 20, buttonResolutionMs: 20, buttonRechargeMs: 15, sweepMs: 5 });
-  const [a, b, c, d, spectator, outsider] = await Promise.all([connect(), connect(), connect(), connect(), connect(), connect()]);
+test("private five-card hands and Secrets reach only their authenticated owner and survive reconnect", async (context) => {
+  const { connect } = await setup(context, { buttonCountdownMs: 20, sweepMs: 5 });
+  const [a, b, c, d, spectator] = await Promise.all([connect(), connect(), connect(), connect(), connect()]);
   const host = success(await call(a, EVENTS.create, person("Aster"), SessionResultSchema));
-  const joined = [
+  const joins = [
     success(await call(b, EVENTS.join, { ...person("Birch"), roomCode: host.state.roomCode }, SessionResultSchema)),
     success(await call(c, EVENTS.join, { ...person("Cedar"), roomCode: host.state.roomCode }, SessionResultSchema)),
     success(await call(d, EVENTS.join, { ...person("Dune"), roomCode: host.state.roomCode }, SessionResultSchema)),
@@ -581,106 +510,79 @@ test("four Socket.IO clients and a spectator converge on authoritative paced But
   const roomId = host.state.roomId;
   for (const peer of [a, b, c, d]) assert.ok((await call(peer, EVENTS.ready, { ...command(roomId), ready: true }, StateResultSchema)).ok);
   assert.ok((await call(a, EVENTS.startGame, command(roomId), StateResultSchema)).ok);
-  await eventually(() => [a, b, c, d].every((peer) => peer.privateStates.length === 1));
+  await eventually(() => [a, b, c, d].every((peer) => peer.privateStates.at(-1)?.hand.length === 5));
   assert.equal(spectator.privateStates.length, 0);
-  for (const peer of [a, b, c, d]) assert.ok((await call(peer, EVENTS.acknowledgeRule, command(roomId), StateResultSchema)).ok);
-  await eventually(() => [a, b, c, d, spectator].every((peer) => peer.states.at(-1)?.publicRound?.phase === "playing"));
-
   const peers = [a, b, c, d];
-  const assigned = peers.map((peer, index) => ({ peer, state: peer.privateStates.at(-1)!, session: [host, ...joined][index]! }));
-  const blockedTargets = new Set(assigned.filter(({ state }) => state?.secretRule.templateId === "BUTTON_BLOCK").map(({ state }) => state?.secretRule.targetPlayerId));
-  const safeActors = assigned.filter(({ state }) => state && state.secretRule.templateId !== "BUTTON_DOUBLE" && !blockedTargets.has(state.playerId));
-  assert.ok(safeActors.length >= 2);
-  const safe = safeActors[0]!;
-  const alternate = safeActors[1]!;
-  const malicious = await call(safe.peer, EVENTS.buttonPress, { ...command(roomId), counter: 19, delta: 20, completed: true }, StateResultSchema);
-  assert.ok(!malicious.ok); assert.equal(malicious.error.code, "INVALID_PAYLOAD");
-  const spectatorPress = await call(spectator, EVENTS.buttonPress, command(roomId), StateResultSchema);
-  assert.ok(!spectatorPress.ok); assert.equal(spectatorPress.error.code, "PLAYER_ONLY");
-  const outsiderPress = await call(outsider, EVENTS.buttonPress, command(roomId), StateResultSchema);
-  assert.ok(!outsiderPress.ok); assert.equal(outsiderPress.error.code, "INVALID_SESSION");
-
-  const requestPayload = command(roomId);
-  const first = await call(safe.peer, EVENTS.buttonPress, requestPayload, StateResultSchema);
-  assert.ok(first.ok); assert.equal(first.state.publicRound?.publicGameState.counter, 1);
-  assert.equal(first.state.publicRound?.publicGameState.lastNormalActorPlayerId, safe.session.session.playerId);
-  assert.ok((first.state.publicRound?.publicGameState.rechargeEndsAt ?? 0) > Date.now());
-  const duplicate = await call(safe.peer, EVENTS.buttonPress, requestPayload, StateResultSchema);
-  assert.ok(duplicate.ok); assert.equal(duplicate.state.publicRound?.publicGameState.counter, 1);
-  const repeat = await call(safe.peer, EVENTS.buttonPress, command(roomId), StateResultSchema);
-  assert.ok(!repeat.ok); assert.equal(repeat.error.code, "BUTTON_REPEAT_LOCKED");
-  const recharging = await call(alternate.peer, EVENTS.buttonPress, command(roomId), StateResultSchema);
-  assert.ok(!recharging.ok); assert.equal(recharging.error.code, "BUTTON_RECHARGING");
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  const second = await call(alternate.peer, EVENTS.buttonPress, command(roomId), StateResultSchema);
-  assert.ok(second.ok); assert.equal(second.state.publicRound?.publicGameState.counter, 2);
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  const third = await call(safe.peer, EVENTS.buttonPress, command(roomId), StateResultSchema);
-  assert.ok(third.ok); assert.equal(third.state.publicRound?.publicGameState.counter, 3);
-  await eventually(() => [a, b, c, d, spectator].every((peer) => peer.states.at(-1)?.publicRound?.publicGameState.counter === 3));
-  assert.ok([a, b, c, d, spectator].every((peer) => peer.states.at(-1)?.publicRound?.publicGameState.lastNormalActorPlayerId === safe.session.session.playerId));
-  for (const peer of [a, b, c, d, spectator]) {
-    const wire = JSON.stringify(peer.states.at(-1));
-    assert.equal(/privateProgress|hiddenAbilities|secretRule|serverOnlyModifiers/.test(wire), false);
+  for (const [index, peer] of peers.entries()) {
+    const own = peer.privateStates.at(-1)!;
+    assert.equal(own.playerId, [host, ...joins][index]!.session.playerId);
+    assert.equal(own.privateProgress.status, "in_progress");
+    const publicWire = JSON.stringify(peer.states.at(-1));
+    assert.equal(/secretRule|privateProgress|inspections|pendingChoice/.test(publicWire), false);
+    for (const card of own.hand) assert.equal(publicWire.includes(card.cardId), false);
   }
-  const ownerPrivate = safe.peer.privateStates.at(-1)!;
-  safe.peer.socket.disconnect();
+  const original = c.privateStates.at(-1)!;
+  c.socket.disconnect();
   const restored = await connect();
-  const credential = { roomId, playerId: safe.session.session.playerId, token: safe.session.session.token };
-  success(await call(restored, EVENTS.resume, { ...request(), credential }, SessionResultSchema));
+  success(await call(restored, EVENTS.resume, { ...request(), credential: { roomId, playerId: joins[1]!.session.playerId, token: joins[1]!.session.token } }, SessionResultSchema));
   await eventually(() => restored.privateStates.length === 1);
-  assert.equal(restored.privateStates[0]?.secretRule.id, ownerPrivate?.secretRule.id);
-  assert.equal(restored.privateStates[0]?.privateProgress.summary, ownerPrivate?.privateProgress.summary);
+  assert.equal(restored.privateStates[0]?.secretRule.id, original.secretRule.id);
+  assert.equal(restored.privateStates[0]?.revision, original.revision);
+  assert.deepEqual(restored.privateStates[0]?.hand, original.hand);
+  assert.equal(spectator.privateStates.length, 0);
 });
 
-test("four clients synchronize reveal-safe scoring, transferred host control, final winners, and lobby reset", async (context) => {
-  const { connect } = await setup(context, { buttonCountdownMs: 25, buttonDurationMs: 45, buttonResolutionMs: 30, sweepMs: 5 });
-  const [a, b, c, d] = await Promise.all([connect(), connect(), connect(), connect()]);
+test("four clients converge on first-challenger Button V2 resolution, private punishment, idempotency and reconnect", async (context) => {
+  const { connect } = await setup(context, { buttonCountdownMs: 15, challengeTimerMs: 80, challengeRevealMs: 10, sweepMs: 5 });
+  const [a, b, c, d, spectator, outsider] = await Promise.all([connect(), connect(), connect(), connect(), connect(), connect()]);
   const host = success(await call(a, EVENTS.create, person("Aster"), SessionResultSchema));
-  const second = success(await call(b, EVENTS.join, { ...person("Birch"), roomCode: host.state.roomCode }, SessionResultSchema));
-  await call(c, EVENTS.join, { ...person("Cedar"), roomCode: host.state.roomCode }, SessionResultSchema);
-  await call(d, EVENTS.join, { ...person("Dune"), roomCode: host.state.roomCode }, SessionResultSchema);
+  const sessions = [host,
+    success(await call(b, EVENTS.join, { ...person("Birch"), roomCode: host.state.roomCode }, SessionResultSchema)),
+    success(await call(c, EVENTS.join, { ...person("Cedar"), roomCode: host.state.roomCode }, SessionResultSchema)),
+    success(await call(d, EVENTS.join, { ...person("Dune"), roomCode: host.state.roomCode }, SessionResultSchema)),
+  ];
+  await call(spectator, EVENTS.join, { ...person("Watcher"), roomCode: host.state.roomCode, role: "spectator" }, SessionResultSchema);
   const roomId = host.state.roomId;
   const peers = [a, b, c, d];
-  assert.ok((await call(a, EVENTS.settings, { ...command(roomId), settings: { maxPlayers: 10, roundCount: 3, chaos: "normal", buttonRoundDurationSeconds: 80 } }, StateResultSchema)).ok);
   for (const peer of peers) assert.ok((await call(peer, EVENTS.ready, { ...command(roomId), ready: true }, StateResultSchema)).ok);
   assert.ok((await call(a, EVENTS.startGame, command(roomId), StateResultSchema)).ok);
-
-  const finishRound = async (expected: "reveal" | "match_complete") => {
-    for (const peer of peers) assert.ok((await call(peer, EVENTS.acknowledgeRule, command(roomId), StateResultSchema)).ok);
-    await eventually(() => peers.every((peer) => peer.states.at(-1)?.publicRound?.phase === "playing"));
-    assert.ok(peers.every((peer) => peer.states.at(-1)?.publicRound?.roundScore === null));
-    const publicScores = JSON.stringify(a.states.at(-1)?.publicRound?.scores);
-    await eventually(() => peers.every((peer) => peer.states.at(-1)?.publicRound?.phase === "resolving"));
-    assert.ok(peers.every((peer) => peer.states.at(-1)?.publicRound?.roundScore === null));
-    assert.ok(peers.every((peer) => JSON.stringify(peer.states.at(-1)?.publicRound?.scores) === publicScores));
-    await eventually(() => peers.every((peer) => peer.states.at(-1)?.publicRound?.phase === expected));
-    const scoring = JSON.stringify(a.states.at(-1)?.publicRound?.roundScore);
-    assert.ok(peers.every((peer) => JSON.stringify(peer.states.at(-1)?.publicRound?.roundScore) === scoring));
-  };
-
-  await finishRound("reveal");
-  const denied = await call(b, EVENTS.continueRound, command(roomId), StateResultSchema);
-  assert.ok(!denied.ok); assert.equal(denied.error.code, "NOT_HOST");
-  assert.ok((await call(a, EVENTS.transfer, { ...command(roomId), targetPlayerId: second.session.playerId }, StateResultSchema)).ok);
-  await eventually(() => peers.every((peer) => peer.states.at(-1)?.hostPlayerId === second.session.playerId));
-  const formerHost = await call(a, EVENTS.continueRound, command(roomId), StateResultSchema);
-  assert.ok(!formerHost.ok); assert.equal(formerHost.error.code, "NOT_HOST");
-  assert.ok((await call(b, EVENTS.continueRound, command(roomId), StateResultSchema)).ok);
-
-  await finishRound("reveal");
-  assert.ok((await call(b, EVENTS.continueRound, command(roomId), StateResultSchema)).ok);
-  await finishRound("match_complete");
-  const completed = a.states.at(-1)?.publicRound;
-  assert.ok(completed?.matchResult);
-  assert.ok(completed.matchResult.winnerPlayerIds.length >= 1);
-  assert.ok(peers.every((peer) => JSON.stringify(peer.states.at(-1)?.publicRound?.matchResult) === JSON.stringify(completed.matchResult)));
-  const noExtraRound = await call(b, EVENTS.continueRound, command(roomId), StateResultSchema);
-  assert.ok(!noExtraRound.ok); assert.equal(noExtraRound.error.code, "INVALID_GAME_PHASE");
-
-  assert.ok((await call(b, EVENTS.returnToLobby, command(roomId), StateResultSchema)).ok);
-  await eventually(() => peers.every((peer) => peer.states.at(-1)?.status === "lobby" && peer.states.at(-1)?.publicRound === null));
-  assert.ok(peers.every((peer) => peer.states.at(-1)?.hostPlayerId === second.session.playerId));
-  assert.ok(peers.every((peer) => peer.states.at(-1)?.players.every((player) => !player.ready)));
-  assert.ok(peers.every((peer) => peer.privateStates.at(-1) === null));
+  await eventually(() => peers.every((peer) => peer.privateStates.at(-1)?.hand.length === 5));
+  for (const peer of peers) assert.ok((await call(peer, EVENTS.acknowledgeRule, command(roomId), StateResultSchema)).ok);
+  await eventually(() => peers.every((peer) => peer.states.at(-1)?.publicRound?.phase === "turn_action"));
+  const activeId = a.states.at(-1)!.publicRound!.publicGameState.currentPlayerId!;
+  const activeIndex = sessions.findIndex((session) => session.session.playerId === activeId);
+  const actor = peers[activeIndex]!;
+  const actual = actor.privateStates.at(-1)!.hand[0]!;
+  const claim = actual.kind === "PLUS_ONE" ? "PLUS_TWO" : "PLUS_ONE";
+  const malicious = await call(actor, EVENTS.playCard, { ...command(roomId), cardId: actual.cardId, claim, actualCard: actual.kind }, StateResultSchema);
+  assert.ok(!malicious.ok); assert.equal(malicious.error.code, "INVALID_PAYLOAD");
+  const spectatorPlay = await call(spectator, EVENTS.playCard, { ...command(roomId), cardId: randomUUID(), claim: "PLUS_ONE" }, StateResultSchema);
+  assert.ok(!spectatorPlay.ok); assert.equal(spectatorPlay.error.code, "PLAYER_ONLY");
+  const outsiderPlay = await call(outsider, EVENTS.playCard, { ...command(roomId), cardId: randomUUID(), claim: "PLUS_ONE" }, StateResultSchema);
+  assert.ok(!outsiderPlay.ok); assert.equal(outsiderPlay.error.code, "INVALID_SESSION");
+  const playPayload = { ...command(roomId), cardId: actual.cardId, claim };
+  const played = await call(actor, EVENTS.playCard, playPayload, StateResultSchema);
+  assert.ok(played.ok); assert.equal(played.state.publicRound?.phase, "challenge");
+  assert.equal(JSON.stringify(played.state).includes(actual.cardId), false);
+  const duplicate = await call(actor, EVENTS.playCard, playPayload, StateResultSchema);
+  assert.ok(duplicate.ok); assert.equal(duplicate.state.stateVersion, played.state.stateVersion);
+  const challengers = peers.filter((peer) => peer !== actor);
+  const attempts = await Promise.all(challengers.slice(0, 2).map((peer) => call(peer, EVENTS.callBluff, command(roomId), StateResultSchema)));
+  assert.equal(attempts.filter((result) => result.ok).length, 1);
+  assert.equal(attempts.filter((result) => !result.ok && result.error.code === "CHALLENGE_CLOSED").length, 1);
+  await eventually(() => peers.every((peer) => peer.states.at(-1)?.publicRound?.phase === "penalty_discard"));
+  const penaltyId = activeId;
+  const penaltyIndex = sessions.findIndex((session) => session.session.playerId === penaltyId);
+  const punished = peers[penaltyIndex]!;
+  await eventually(() => punished.privateStates.at(-1)?.pendingChoice?.kind === "penalty_discard");
+  const pending = punished.privateStates.at(-1)!;
+  punished.socket.disconnect();
+  const restored = await connect();
+  success(await call(restored, EVENTS.resume, { ...request(), credential: { roomId, playerId: penaltyId, token: sessions[penaltyIndex]!.session.token } }, SessionResultSchema));
+  await eventually(() => restored.privateStates.at(-1)?.pendingChoice?.kind === "penalty_discard");
+  assert.ok((await call(restored, EVENTS.penaltyDiscard, { ...command(roomId), cardId: pending.hand[0]!.cardId }, StateResultSchema)).ok);
+  await eventually(() => [a, b, c, d, spectator].filter((peer) => peer.socket.connected).every((peer) => peer.states.at(-1)?.publicRound?.phase === "turn_action"));
+  const publicWire = JSON.stringify(spectator.states.at(-1));
+  assert.equal(publicWire.includes(pending.hand[0]!.cardId), false);
+  assert.equal(spectator.privateStates.length, 0);
 });

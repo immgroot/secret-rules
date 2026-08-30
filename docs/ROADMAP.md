@@ -1,108 +1,44 @@
 # Roadmap and Phase Gates
 
-**Phase 3.3 is the current approved handoff. Do not begin Phase 4.** Completing a
-phase never authorizes the next one.
+**Button V2 is the current approved handoff. Do not begin another phase without
+explicit instruction.** Completing this work does not authorize deployment or a
+second mini-game.
 
-## Completed
+## Completed foundation
 
-### Phase 0 — Foundation
+- pnpm workspace with Next.js/React web, Node/Socket.IO server, strict shared
+  Zod contracts, TypeScript, Tailwind and ESLint;
+- original visual identity, local fonts, accessible components, preferences and
+  isolated homepage teaching interactions;
+- authoritative room codes, lobby settings, stable anonymous reconnect,
+  readiness, host controls, colors, spectators, AFK, chat, mute/report,
+  passwords/locks, removal/transfer, rate limits and integration tests;
+- bounded Secret Rule Engine with generic catalog, target relationships,
+  incompatibilities, Chaos weighting, quality search and anti-repeat history;
+- match-local scoring, reveals, standings, final winners and safe return to lobby.
 
-Next.js/React web, Node/Socket.IO server and browser-safe shared package; strict
-TypeScript, Tailwind, Zod, ESLint, safe env examples, lockfile and engineering docs.
+## Button V2 — current
 
-### Phase 0.5 — Visual identity
-
-Original branding, local fonts, design tokens, physical-card components and the
-approved dark tabletop visual system.
-
-### Phase 0.6 — Homepage polish
-
-Tutorial, card inspection, preferences/sound and the isolated local Button teaser.
-The teaser remains separate from multiplayer gameplay.
-
-### Phase 1 / 1.6 — Rooms, lobby and social systems
-
-Authoritative room codes, create/join, stable anonymous sessions, reconnect,
-readiness, host settings, colors, spectators, AFK, chat, mute/report/profile,
-password/lock, removal/transfer, rate limits and multi-client tests.
-
-### Phase 2 — Secret Rule Engine
-
-100 generic families, structured schemas, target selectors, capabilities,
-relationship graph, incompatibilities, chaos weighting, quality search,
-anti-repetition, deterministic tools and recipient-only private delivery.
-
-### Phase 3 — Game shell and The Button
-
-- reusable in-game shell with 4–10 seating, HUD, chat, secret drawer, event feed,
-  connection state, spectator view and reveal;
-- explicit server lifecycle from host start through deal, acknowledgement,
-  countdown, play, resolution, reveal, next round and minimal match completion;
-- 49 Button-specific mechanics connected to the Phase 2 evaluator registry;
-- authoritative counter, initial fixed timer, action history, duplicate/rate control,
-  exact-20 success, overshoot and timeout;
-- working DOUBLE, BLOCK and PROTECT hidden modifiers with sanitized public effects;
-- reconnect-stable rule/progress, private evaluation and public final reveal;
-- unit and real Socket.IO coverage for privacy, malicious payloads,
-  synchronization, reconnect, spectators, modifiers and 4–10 generation.
-
-See [BUTTON_GAME.md](./BUTTON_GAME.md) for the exact current mechanics.
-
-### Phase 3.1 — Gameplay UX and Button pacing
-
-- redesigned rule reading, countdown and active tabletop presentation;
-- count-aware 4–10 player seats and responsive mobile roster;
-- large mechanical counter and physical Button with explicit availability,
-  pressed, recharge, waiting, disabled and round-over states;
-- overlay chat with local unread state and no table-width shift;
-- server-owned global recharge and previous-actor restriction;
-- reconnect-safe recipient-specific private delivery and synchronized state;
-- rule-catalog cleanup so every sequence objective remains achievable under the
-  new core pacing rule.
-
-### Phase 3.2 — Scoring, match completion and mode foundation
-
-- centralized additive Secret Rule, public challenge, difficulty and explicitly
-  eligible Wild scoring;
-- reveal-safe public round breakdowns, tied standings and authoritative winners;
-- automatic final-round `match_complete` transition with no host dead end;
-- host-only next round, reveal-boundary host transfer and safe return to lobby;
-- match reset that preserves room, members, host, settings and chat;
-- explicit playable Classic mode plus non-playable Mayhem types/configuration;
-- focused counter/target hierarchy, player-seat, timer and score presentation
-  polish without replacing the approved Phase 3.1 tabletop.
-
-See [SCORING.md](./SCORING.md) and [BUTTON_MAYHEM.md](./BUTTON_MAYHEM.md).
-
-### Phase 3.3 — Premium table and configurable timer (current)
-
-- one reusable physical `GameTable` with wide oval desktop geometry, mobile
-  adaptation, subtle SECRET RULES identity and table-depth details;
-- dynamic 4–10 perimeter seats, centered Button console, mechanical counter,
-  compact table log, collapsed overlay chat and unchanged private Secret access;
-- host-only lobby timer presets of 60/80/120/180 seconds plus a whole custom
-  30–300 second value, defaulting to 80;
-- one server-owned deadline reused for every round, synchronized to all clients,
-  with browser-only `mm:ss` presentation and strict rejection of forged timing;
-- preserved scoring, match completion, Classic gameplay and non-playable Mayhem
-  boundary, with no new dependency or competing state/timer system.
+- scaled server-shuffled deck and five recipient-private cards per player;
+- independent private revisions and reconnect restoration;
+- turn action with real-card ownership and unrestricted public claim identity;
+- first accepted Call Bluff, card reveal only on challenge, score floor and
+  loser-selected private penalty discard;
+- +1/+2/+3/-1/-2, SKIP, STEAL, INSPECT, REVERSE, SHIELD and WILD;
+- deck exhaustion and empty-hand Basic Button safety;
+- configurable exact target, authoritative target rewards, private vote,
+  seeded tied-vote coin flip and exactly one Last Chance rotation;
+- 22 Button V2 Secrets with Standard/Hard rewards and hidden live completion;
+- V2 lobby settings, premium outside-edge seating, private hand/claim flow,
+  challenge/effect presentation, reveal breakdown and responsive composition;
+- isolated V2 homepage demo, eight-step How to Play and missing-video fallback.
 
 ## Not authorized
 
-### Phase 4 — Playtest response and balancing
-
-Requires explicit instruction after manual testing. Possible work includes timing,
-weights, copy clarity, modifier frequency, layout refinements and rule semantics.
-None is automatically approved by this roadmap.
-
-### Additional mini-games
-
-The Elevator, The Bomb, Doors, Safe, Train, Auction, Bridge, Maze and every other
-game require separate approval and must use the existing shell/lifecycle.
-
-### Production and commercial systems
-
-Hosting, persistence, multi-process ownership, accounts, authentication,
-matchmaking, a public room browser, durable moderation, payments, achievements,
-ranked play, voice and persistent progression are separate architectural phases.
-They are not implied by completing The Button.
+- balancing or tuning changes beyond defects found in this implementation;
+- The Elevator, The Bomb, Doors, Safe, Train, Auction, Bridge or another game;
+- Classic/Mayhem, Action Tokens, old recharge/repeat behavior or hidden modifiers;
+- database, multi-process room ownership, accounts, authentication, payments,
+  matchmaking, public room browser, durable moderation, voice, achievements,
+  ranked play or persistent progression;
+- deployment or merging this branch into `main`.
