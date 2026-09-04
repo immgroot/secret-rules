@@ -26,7 +26,7 @@ export function ButtonDemo() {
   }, [state, sound]);
   return <GameCard className="button-preview local-demo local-demo--v2" aria-label="The Button V2 interactive gameplay preview" data-demo-stage={state.stage}>
     <div className="preview-toolbar"><span className="eyebrow">INTERACTIVE PREVIEW</span><span className="demo-duration"><GameIcon name="timer" size={14} /> 8 SEC · SCRIPTED</span></div>
-    <div className="preview-objective"><p>BUTTON V2</p><h3>PLAY HIDDEN. <span>CLAIM ANYTHING.</span></h3></div>
+    <div className="preview-objective"><p>BUTTON V2</p><h3>PLAY HIDDEN. <span>CLAIM A NUMBER.</span></h3></div>
     <div className="v2-demo-table">
       <span className="v2-demo-player v2-demo-player--you"><PlayerBadge name="YOU" tone="lime" compact reaction={state.stage === "claim" ? "press" : "idle"} /></span>
       <span className="v2-demo-player v2-demo-player--liv"><PlayerBadge name="LIV" tone="violet" compact reaction={state.stage === "challenge" ? "suspicious" : "idle"} /></span>

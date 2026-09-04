@@ -37,7 +37,7 @@ export function evaluateButtonRule(rule: SecretRule, ownerPlayerId: string, even
     case "BUTTON_V2_TRUTHFUL_RESOLUTIONS": current = count("TRUTHFUL") + count("FALSELY_ACCUSED"); break;
     case "BUTTON_V2_POSITIVE_RESOLVED": current = resolved.filter((event) => positive.has(event.actualCard)).length; break;
     case "BUTTON_V2_WIN_CHALLENGES": current = count("CORRECT_CHALLENGE") + count("FALSELY_ACCUSED"); break;
-    case "BUTTON_V2_BLUFF_TARGET": current = mine.filter((event) => event.outcome === "BLUFF_SUCCEEDED" && event.opponentPlayerId === rule.targetPlayerId).length; break;
+    case "BUTTON_V2_EFFECT_TARGET": current = resolved.filter((event) => effects.has(event.actualCard) && event.opponentPlayerId === rule.targetPlayerId).length; break;
     case "BUTTON_V2_FALSELY_ACCUSED_BY_TARGET": current = mine.filter((event) => event.outcome === "FALSELY_ACCUSED" && event.opponentPlayerId === rule.targetPlayerId).length; break;
     case "BUTTON_V2_BLUFF_UNCAUGHT": current = count("BLUFF_SUCCEEDED"); impossible = count("BLUFF_CAUGHT") > 0; break;
     case "BUTTON_V2_CATCH_DISTINCT": current = uniqueOpponents(["CORRECT_CHALLENGE"]); break;

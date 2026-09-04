@@ -1289,15 +1289,18 @@
 .tutorial-comparison strong { grid-column: 1 / -1; color: #ff8278; font: 800 1.75rem/1 var(--font-display), sans-serif; }
 .tutorial-comparison small { grid-column: 1 / -1; color: var(--accent); font: 500 .5rem/1.3 var(--font-secret), monospace; }
 .tutorial-fine-print { max-width: 385px; margin: 0; color: var(--text-muted); text-align: center; font-size: .6rem; line-height: 1.4; }
-.tutorial-card-guide { width: 100%; display: grid; gap: 10px; }
-.tutorial-number-guide { display: flex; align-items: center; justify-content: center; gap: 5px; }
-.tutorial-number-guide b { min-width: 35px; padding: 7px 5px; color: var(--ink); background: var(--secret); border-radius: 4px; text-align: center; font: 800 .8rem/1 var(--font-display), sans-serif; }
-.tutorial-number-guide span { margin-left: 5px; color: var(--text-muted); font: 500 .45rem/1 var(--font-secret), monospace; }
-.tutorial-card-guide ul { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 0; padding: 0; list-style: none; }
-.tutorial-card-guide li { display: grid; grid-template-columns: 66px 1fr; align-items: center; gap: 7px; padding: 7px; border: 1px solid var(--border); background: #11150fb8; }
-.tutorial-card-guide li b { color: var(--accent); font: 800 .68rem/1 var(--font-display), sans-serif; }
-.tutorial-card-guide li span { color: var(--text-secondary); font-size: .55rem; line-height: 1.25; }
-.tutorial-card-guide > small { color: var(--accent); text-align: center; font: 500 .47rem/1 var(--font-secret), monospace; }
+.tutorial-effect-lesson { width: 100%; display: grid; justify-items: center; gap: 10px; }
+.tutorial-effect-flow { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.tutorial-effect-flow > span { min-width: 110px; display: grid; gap: 3px; padding: 9px 12px; border: 1px solid var(--accent); border-radius: 6px; color: var(--paper); background: #131a10; text-align: center; }
+.tutorial-effect-flow b { color: var(--accent); font: 800 1.05rem/.9 var(--font-display), sans-serif; }
+.tutorial-effect-flow small, .tutorial-effect-private span, .tutorial-effect-private small { color: var(--text-muted); font: 500 .38rem/1.25 var(--font-secret), monospace; letter-spacing: .08em; }
+.tutorial-effect-flow > i { color: var(--accent); font-style: normal; }
+.tutorial-effect-private { display: grid; justify-items: center; gap: 4px; padding: 9px 14px; border: 1px solid #c5b5ee66; border-radius: 6px; background: #17141d; text-align: center; }
+.tutorial-effect-private strong { color: var(--paper); font: 800 1.15rem/.9 var(--font-display), sans-serif; }
+.tutorial-effect-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; }
+.tutorial-effect-chips b { padding: 5px 7px; border: 1px solid #ffffff20; border-radius: 4px; color: var(--text-secondary); background: #10140f; font: 700 .5rem/1 var(--font-secret), monospace; }
+.tutorial-effect-lesson > p { margin: 0; color: var(--accent); text-align: center; font: 700 .48rem/1.25 var(--font-secret), monospace; letter-spacing: .08em; }
+.tutorial-effect-lesson > small { color: var(--text-muted); text-align: center; font: 500 .43rem/1.35 var(--font-secret), monospace; }
 .tutorial-target, .tutorial-counter, .tutorial-reward { display: grid; justify-items: center; gap: 7px; }
 .tutorial-counter strong { min-width: 135px; padding: 4px 18px; border-radius: 7px; color: var(--accent); background: #050805; text-align: center; font: 800 5rem/.9 var(--font-display), sans-serif; }
 .tutorial-counter span, .tutorial-reward span { color: var(--accent); font: 500 .58rem/1 var(--font-secret), monospace; letter-spacing: .12em; }
@@ -1332,8 +1335,7 @@
   .tutorial-card-fan i { width: 62px; height: 92px; margin-right: -25px; }
   .tutorial-claim-builder { grid-template-columns: 75px 1fr; gap: 8px; }
   .tutorial-facedown i { width: 68px; height: 94px; }
-  .tutorial-card-guide li { grid-template-columns: 53px 1fr; padding: 5px; }
-  .tutorial-card-guide li span { font-size: .55rem; }
+  .tutorial-effect-flow > span { min-width: 92px; padding-inline: 8px; }
   .tutorial-stage--9 .tutorial-pov__center { width: 80%; max-width: none; }
   .tutorial-stage--9 .tutorial-pov__player--left, .tutorial-stage--9 .tutorial-pov__player--right { top: 74%; }
   .tutorial-final { grid-template-columns: 126px minmax(0, 1fr); gap: 4px; }

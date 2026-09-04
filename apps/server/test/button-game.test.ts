@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import {
-  BUTTON_CARD_KINDS, DEFAULT_ROOM_SETTINGS, PlayButtonCardSchema, PrivatePlayerRoundStateSchema, SecretRuleSchema, WildChoiceSchema,
-  type ButtonCardKind, type ObservableGameEvent, type PrivatePlayerRoundState, type RuleParameters, type SessionGrant,
+  EFFECT_BUTTON_CARDS, NUMBER_BUTTON_CARDS, DEFAULT_ROOM_SETTINGS, PlayButtonCardSchema, PrivatePlayerRoundStateSchema, SecretRuleSchema, WildMovementSchema,
+  isNumberButtonCard, isTargetedButtonCard,
+  type ButtonCardKind, type NumberButtonCardKind, type ObservableGameEvent, type PrivatePlayerRoundState, type RuleParameters, type SessionGrant,
 } from "@secret-rules/shared";
 import { BUTTON_RULE_PACK, BUTTON_RULE_TEMPLATE_COUNT, BUTTON_RULE_TEMPLATES } from "../src/games/button/catalog.ts";
 import { buildButtonDeck, scaledButtonDeckCounts, STANDARD_BUTTON_DECK_COUNTS } from "../src/games/button/deck.ts";
@@ -105,20 +106,27 @@ function findSeedForReverseThen(kind: ButtonCardKind) {
   throw new Error(`No deterministic REVERSE/${kind} seed found.`);
 }
 
-function resolvePenalty(harness: RoundHarness, socket: string) {
-  harness.advance(1);
-  const state = harness.privateBySocket.get(socket)!;
-  assert.equal(state.pendingChoice?.kind, "penalty_discard");
-  harness.owner.penaltyDiscard(socket, { ...command(harness.roomId), cardId: state.hand[0]!.cardId });
-}
-
 function playTrusted(harness: RoundHarness, kind?: ButtonCardKind, targetId?: string) {
   const actor = harness.current();
   const card = kind ? actor.privateState.hand.find((candidate) => candidate.kind === kind)! : actor.privateState.hand[0]!;
   const target = targetId ?? harness.sessions.find((session) => session.playerId !== actor.playerId)!.playerId;
-  harness.owner.playCard(actor.socket, { ...command(harness.roomId), cardId: card.cardId, claim: card.kind, ...(["SKIP", "STEAL", "INSPECT"].includes(card.kind) ? { targetPlayerId: target, realTargetPlayerId: target } : {}) });
-  harness.advance(10);
+  if (isNumberButtonCard(card.kind)) {
+    harness.owner.playCard(actor.socket, { ...command(harness.roomId), playType: "number", cardId: card.cardId, claim: card.kind });
+    harness.advance(10);
+    harness.advance(1);
+  } else {
+    harness.owner.playCard(actor.socket, { ...command(harness.roomId), playType: "effect", cardId: card.cardId, ...(isTargetedButtonCard(card.kind) ? { targetPlayerId: target } : {}), ...(card.kind === "WILD" ? { movement: 1 as const } : {}) });
+  }
   return { actor, card, target };
+}
+
+function openNumberChallenge(harness: RoundHarness, claim?: NumberButtonCardKind) {
+  const actor = harness.current();
+  const card = actor.privateState.hand.find((candidate) => isNumberButtonCard(candidate.kind));
+  assert.ok(card && isNumberButtonCard(card.kind));
+  harness.owner.playCard(actor.socket, { ...command(harness.roomId), playType: "number", cardId: card.cardId, claim: claim ?? card.kind });
+  const responders = harness.sockets.filter((socket) => socket !== actor.socket);
+  return { actor, card, responders };
 }
 
 function driveToTarget(harness: RoundHarness) {
@@ -133,9 +141,13 @@ function driveToTarget(harness: RoundHarness) {
       return value !== null && value > 0 && value <= remaining;
     }) ?? actor.privateState.hand.find((candidate) => candidate.kind === "WILD") ?? actor.privateState.hand[0]!;
     const target = harness.sessions.find((session) => session.playerId !== actor.playerId)!.playerId;
-    harness.owner.playCard(actor.socket, { ...command(harness.roomId), cardId: card.cardId, claim: card.kind, ...(["SKIP", "STEAL", "INSPECT"].includes(card.kind) ? { targetPlayerId: target, realTargetPlayerId: target } : {}) });
-    harness.advance(10);
-    if (harness.state().publicRound?.phase === "effect_choice") harness.owner.chooseWild(actor.socket, { ...command(harness.roomId), movement: remaining >= 2 ? 2 : 1 });
+    if (isNumberButtonCard(card.kind)) {
+      harness.owner.playCard(actor.socket, { ...command(harness.roomId), playType: "number", cardId: card.cardId, claim: card.kind });
+      harness.advance(10);
+      harness.advance(1);
+    } else {
+      harness.owner.playCard(actor.socket, { ...command(harness.roomId), playType: "effect", cardId: card.cardId, ...(isTargetedButtonCard(card.kind) ? { targetPlayerId: target } : {}), ...(card.kind === "WILD" ? { movement: remaining >= 2 ? 2 as const : 1 as const } : {}) });
+    }
   }
   assert.equal(harness.state().publicRound?.phase, "target_vote", "the exact target must remain reachable through normal server resolution");
 }
@@ -145,7 +157,7 @@ function reconnectAtPhase(
   socket: string,
   restoredSocket: string,
   phase: NonNullable<ReturnType<RoundHarness["state"]>["publicRound"]>["phase"],
-  pendingChoice?: "penalty_discard" | "wild_value" | "target_vote",
+  pendingChoice?: "penalty_discard" | "target_vote",
 ) {
   const session = harness.sessions[harness.sockets.indexOf(socket)]!;
   const before = harness.privateBySocket.get(socket)!;
@@ -160,10 +172,17 @@ function reconnectAtPhase(
   return restored;
 }
 
-test("the base 50-card deck has the locked composition and scales deterministically", () => {
-  assert.deepEqual(STANDARD_BUTTON_DECK_COUNTS, { PLUS_ONE: 11, PLUS_TWO: 9, PLUS_THREE: 5, MINUS_ONE: 7, MINUS_TWO: 4, SKIP: 3, STEAL: 2, INSPECT: 2, REVERSE: 3, SHIELD: 2, WILD: 2 });
+test("the base 50-card deck has the locked 80/20 composition and scales deterministically", () => {
+  assert.deepEqual(STANDARD_BUTTON_DECK_COUNTS, { PLUS_ONE: 12, PLUS_TWO: 10, PLUS_THREE: 7, MINUS_ONE: 6, MINUS_TWO: 5, SKIP: 2, STEAL: 2, INSPECT: 2, REVERSE: 2, SHIELD: 1, WILD: 1 });
   assert.equal(Object.values(STANDARD_BUTTON_DECK_COUNTS).reduce((sum, count) => sum + count, 0), 50);
-  for (const size of [30, 40, 50, 80, 100, 130, 160, 200]) assert.equal(Object.values(scaledButtonDeckCounts(size)).reduce((sum, count) => sum + count, 0), size);
+  assert.equal(NUMBER_BUTTON_CARDS.reduce((sum, kind) => sum + STANDARD_BUTTON_DECK_COUNTS[kind], 0), 40);
+  assert.equal(EFFECT_BUTTON_CARDS.reduce((sum, kind) => sum + STANDARD_BUTTON_DECK_COUNTS[kind], 0), 10);
+  for (const size of [30, 40, 50, 80, 100, 130, 160, 200]) {
+    const counts = scaledButtonDeckCounts(size);
+    assert.equal(Object.values(counts).reduce((sum, count) => sum + count, 0), size);
+    const effectRatio = EFFECT_BUTTON_CARDS.reduce((sum, kind) => sum + counts[kind], 0) / size;
+    assert.ok(effectRatio >= .17 && effectRatio <= .23, `${size} cards should stay near 20% Effects`);
+  }
   assert.deepEqual(buildButtonDeck(100, "same-seed"), buildButtonDeck(100, "same-seed"));
   assert.notDeepEqual(buildButtonDeck(100, "same-seed"), buildButtonDeck(100, "other-seed"));
   assert.equal(new Set(buildButtonDeck(200, "unique").map((card) => card.cardId)).size, 200);
@@ -252,12 +271,12 @@ test("4-player and 10-player rounds deal five private cards with no host or spec
   }
 });
 
-test("claims may differ from the real card, name an unowned card, and keep the actual card private when trusted", () => {
-  const game = createRound();
+test("Number claims may differ from the real Number, name an unowned Number, and keep the actual card private when trusted", () => {
+  const game = createRound({ seed: findSeedFor("MINUS_TWO") });
   const actor = game.current();
-  const card = actor.privateState.hand.find((candidate) => !["SKIP", "STEAL", "INSPECT", "WILD"].includes(candidate.kind)) ?? actor.privateState.hand[0]!;
-  const unowned = BUTTON_CARD_KINDS.find((kind) => !actor.privateState.hand.some((candidate) => candidate.kind === kind) && kind !== card.kind)!;
-  const payload = { ...command(game.roomId), cardId: card.cardId, claim: unowned, ...( ["SKIP", "STEAL", "INSPECT"].includes(unowned) ? { targetPlayerId: game.sessions.find((session) => session.playerId !== actor.playerId)!.playerId } : {}) };
+  const card = actor.privateState.hand.find((candidate) => candidate.kind === "MINUS_TWO")!;
+  const unowned = NUMBER_BUTTON_CARDS.find((kind) => !actor.privateState.hand.some((candidate) => candidate.kind === kind) && kind !== card.kind) ?? "PLUS_THREE";
+  const payload = { ...command(game.roomId), playType: "number" as const, cardId: card.cardId, claim: unowned };
   const played = game.owner.playCard(actor.socket, payload);
   assert.equal(played.state.publicRound?.phase, "challenge");
   assert.equal(played.state.publicRound?.publicGameState.currentClaim?.claim, unowned);
@@ -269,12 +288,10 @@ test("claims may differ from the real card, name an unowned card, and keep the a
 });
 
 test("first correct challenge wins atomically, cancels the bluff, scores +1/-1, and requires a private extra discard", () => {
-  const game = createRound();
+  const game = createRound({ seed: findSeedFor("MINUS_TWO") });
   const actor = game.current();
-  const card = actor.privateState.hand[0]!;
-  const claim = BUTTON_CARD_KINDS.find((kind) => kind !== card.kind && !["SKIP", "STEAL", "INSPECT"].includes(kind))!;
-  const realTarget = game.sessions.find((session) => session.playerId !== actor.playerId)!.playerId;
-  game.owner.playCard(actor.socket, { ...command(game.roomId), cardId: card.cardId, claim, ...( ["SKIP", "STEAL", "INSPECT"].includes(card.kind) ? { realTargetPlayerId: realTarget } : {}) });
+  const card = actor.privateState.hand.find((candidate) => candidate.kind === "MINUS_TWO")!;
+  game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "number", cardId: card.cardId, claim: "PLUS_TWO" });
   const challengers = game.sockets.filter((socket) => socket !== actor.socket);
   const resolved = game.owner.callBluff(challengers[0]!, command(game.roomId));
   assert.equal(resolved.state.publicRound?.phase, "challenge_reveal");
@@ -292,11 +309,95 @@ test("first correct challenge wins atomically, cancels the bluff, scores +1/-1, 
   assert.equal(after.state.publicRound?.publicGameState.counter, 0, "caught bluff effect is cancelled");
 });
 
+test("PASS is server-owned, public, idempotent, and permanently locks that player out of Call Bluff", () => {
+  const game = createRound();
+  const { actor, responders } = openNumberChallenge(game);
+  const passedPlayerId = game.sessions[game.sockets.indexOf(responders[0]!)]!.playerId;
+  const first = game.owner.passChallenge(responders[0]!, command(game.roomId));
+  assert.deepEqual(first.state.publicRound?.publicGameState.challenge?.passedPlayerIds, [passedPlayerId]);
+  const duplicate = game.owner.passChallenge(responders[0]!, command(game.roomId));
+  assert.equal(duplicate.state.publicRound?.phase, "challenge");
+  assert.deepEqual(duplicate.state.publicRound?.publicGameState.challenge?.passedPlayerIds, [passedPlayerId]);
+  assert.throws(() => game.owner.callBluff(responders[0]!, command(game.roomId)), { message: "ACTION_REJECTED" });
+  assert.throws(() => game.owner.passChallenge(actor.socket, command(game.roomId)), { message: "ACTION_REJECTED" });
+  assert.throws(() => game.owner.passChallenge("spectator", command(game.roomId)), { message: "PLAYER_ONLY" });
+});
+
+test("the final eligible PASS resolves immediately as no challenge and advances without waiting for the timer", () => {
+  const game = createRound();
+  const before = game.state().publicRound!;
+  const { card, responders } = openNumberChallenge(game);
+  for (const socket of responders.slice(0, -1)) {
+    game.owner.passChallenge(socket, command(game.roomId));
+    assert.equal(game.state().publicRound?.phase, "challenge");
+  }
+  const resolved = game.owner.passChallenge(responders.at(-1)!, command(game.roomId)).state.publicRound!;
+  assert.equal(resolved.phase, "turn_action");
+  assert.equal(resolved.publicGameState.counter, Math.max(0, movementForCard(card.kind)!));
+  assert.notEqual(resolved.publicGameState.currentPlayerId, before.publicGameState.currentPlayerId);
+  assert.equal(resolved.publicGameState.challenge, null);
+  assert.ok(resolved.publicEvents.some((event) => event.type === "NO_CHALLENGE"));
+});
+
+test("partial PASS waits for either one accepted Call Bluff or the unchanged timer fallback", () => {
+  const challenged = createRound();
+  const { responders } = openNumberChallenge(challenged);
+  challenged.owner.passChallenge(responders[0]!, command(challenged.roomId));
+  const called = challenged.owner.callBluff(responders[1]!, command(challenged.roomId));
+  assert.equal(called.state.publicRound?.phase, "challenge_reveal");
+  assert.equal(called.state.publicRound?.publicGameState.challenge?.challengerPlayerId, challenged.sessions[challenged.sockets.indexOf(responders[1]!)]!.playerId);
+  assert.throws(() => challenged.owner.passChallenge(responders[2]!, command(challenged.roomId)), { message: "CHALLENGE_CLOSED" });
+
+  const timed = createRound();
+  const timedPlay = openNumberChallenge(timed);
+  timed.owner.passChallenge(timedPlay.responders[0]!, command(timed.roomId));
+  assert.equal(timed.state().publicRound?.phase, "challenge");
+  timed.advance(10);
+  assert.equal(timed.state().publicRound?.phase, "turn_action");
+  assert.ok(timed.state().publicRound?.publicEvents.some((event) => event.type === "NO_CHALLENGE"));
+});
+
+test("final PASS and Call Bluff races have exactly one server-accepted resolution", () => {
+  const passWins = createRound();
+  const passRace = openNumberChallenge(passWins);
+  for (const socket of passRace.responders.slice(0, -1)) passWins.owner.passChallenge(socket, command(passWins.roomId));
+  passWins.owner.passChallenge(passRace.responders.at(-1)!, command(passWins.roomId));
+  assert.throws(() => passWins.owner.callBluff(passRace.responders.at(-1)!, command(passWins.roomId)), { message: "CHALLENGE_CLOSED" });
+  assert.equal(passWins.state().publicRound?.publicEvents.filter((event) => event.type === "NO_CHALLENGE").length, 1);
+  assert.equal(passWins.state().publicRound?.publicEvents.filter((event) => event.type === "CHALLENGE_CALLED").length, 0);
+
+  const callWins = createRound();
+  const callRace = openNumberChallenge(callWins);
+  for (const socket of callRace.responders.slice(0, -1)) callWins.owner.passChallenge(socket, command(callWins.roomId));
+  callWins.owner.callBluff(callRace.responders.at(-1)!, command(callWins.roomId));
+  assert.throws(() => callWins.owner.passChallenge(callRace.responders.at(-1)!, command(callWins.roomId)), { message: "CHALLENGE_CLOSED" });
+  assert.equal(callWins.state().publicRound?.publicEvents.filter((event) => event.type === "CHALLENGE_CALLED").length, 1);
+  assert.equal(callWins.state().publicRound?.publicEvents.filter((event) => event.type === "NO_CHALLENGE").length, 0);
+});
+
+test("challenge reservations keep the timer fallback while permanent ineligibility cannot block all-pass resolution", () => {
+  const reserved = createRound({ graceMs: 5_000 });
+  const reservedPlay = openNumberChallenge(reserved);
+  reserved.owner.passChallenge(reservedPlay.responders[0]!, command(reserved.roomId));
+  reserved.owner.passChallenge(reservedPlay.responders[1]!, command(reserved.roomId));
+  reserved.owner.disconnect(reservedPlay.responders[2]!);
+  assert.equal(reserved.state().publicRound?.phase, "challenge", "a reconnectable seat keeps its existing eligibility until the timer");
+  reserved.advance(10);
+  assert.equal(reserved.state().publicRound?.phase, "turn_action", "the timer prevents a reconnectable seat from freezing play");
+
+  const departed = createRound();
+  const departedPlay = openNumberChallenge(departed);
+  departed.owner.passChallenge(departedPlay.responders[0]!, command(departed.roomId));
+  departed.owner.passChallenge(departedPlay.responders[1]!, command(departed.roomId));
+  departed.owner.leave(departedPlay.responders[2]!, departed.roomId);
+  assert.equal(departed.state(departedPlay.actor.socket).publicRound?.phase, "turn_action", "a permanently departed responder is removed from all-pass eligibility");
+});
+
 test("false accusation reveals then resolves the truthful card while the challenger chooses a private discard", () => {
   const game = createRound({ seed: findSeedFor("PLUS_TWO") });
   const actor = game.current();
   const card = actor.privateState.hand.find((candidate) => candidate.kind === "PLUS_TWO")!;
-  game.owner.playCard(actor.socket, { ...command(game.roomId), cardId: card.cardId, claim: "PLUS_TWO" });
+  game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "number", cardId: card.cardId, claim: "PLUS_TWO" });
   const challenger = game.sockets.find((socket) => socket !== actor.socket)!;
   game.owner.callBluff(challenger, command(game.roomId));
   game.advance(1);
@@ -310,7 +411,7 @@ test("false accusation reveals then resolves the truthful card while the challen
   assert.equal(snapshot.publicRound?.scores.find((entry) => entry.playerId === actor.playerId)?.score, 1);
 });
 
-test("SKIP, STEAL, INSPECT, REVERSE, SHIELD and WILD resolve authoritatively with private effect knowledge", () => {
+test("all six Effect Cards play directly face-up, skip Call Bluff, and resolve authoritatively", () => {
   for (const kind of ["SKIP", "STEAL", "INSPECT", "REVERSE", "SHIELD", "WILD"] as const) {
     const game = createRound({ seed: findSeedFor(kind) });
     const before = game.current();
@@ -318,13 +419,22 @@ test("SKIP, STEAL, INSPECT, REVERSE, SHIELD and WILD resolve authoritatively wit
     const target = game.sessions[(actorIndex + 2) % game.sessions.length]!.playerId;
     const targetSocket = game.socketFor(target);
     const targetCards = game.privateBySocket.get(targetSocket)!.hand.length;
-    playTrusted(game, kind, target);
-    if (kind === "WILD") {
-      assert.equal(game.privateBySocket.get(before.socket)?.pendingChoice?.kind, "wild_value");
-      game.owner.chooseWild(before.socket, { ...command(game.roomId), movement: 2 });
-      assert.equal(game.state().publicRound?.publicGameState.counter, 2, "Wild applies only the selected value");
-    } else {
-      const publicGame = game.state().publicRound!.publicGameState;
+    const card = before.privateState.hand.find((candidate) => candidate.kind === kind)!;
+    game.owner.playCard(before.socket, {
+      ...command(game.roomId), playType: "effect", cardId: card.cardId,
+      ...(isTargetedButtonCard(kind) ? { targetPlayerId: target } : {}),
+      ...(kind === "WILD" ? { movement: 2 as const } : {}),
+    });
+    const snapshot = game.state().publicRound!;
+    const publicGame = snapshot.publicGameState;
+    assert.equal(snapshot.phase, "turn_action", `${kind} must resolve without a challenge phase`);
+    assert.equal(publicGame.currentClaim, null);
+    assert.equal(publicGame.challenge, null);
+    assert.equal(publicGame.lastEffect?.card, kind);
+    assert.ok(snapshot.publicEvents.some((event) => event.type === "EFFECT_PLAYED" && event.revealedCard === kind));
+    assert.throws(() => game.owner.callBluff(game.sockets.find((socket) => socket !== before.socket)!, command(game.roomId)), { message: "CHALLENGE_CLOSED" });
+    if (kind === "WILD") assert.equal(publicGame.counter, 2, "WILD applies only the selected value");
+    else {
       assert.equal(publicGame.counter, 1, `${kind} adds the common +1`);
       if (kind === "SKIP") assert.ok(publicGame.skippedPlayerIds.includes(target));
       if (kind === "STEAL") {
@@ -341,7 +451,7 @@ test("SKIP, STEAL, INSPECT, REVERSE, SHIELD and WILD resolve authoritatively wit
   }
 });
 
-test("INSPECT uses a private real target even behind a numeric claim, preserves the hand, and restores only the inspector's knowledge", () => {
+test("INSPECT is direct and public-targeted while its random card identity stays inspector-only across reconnect", () => {
   const game = createRound({ seed: findSeedFor("INSPECT") });
   const actor = game.current();
   const card = actor.privateState.hand.find((candidate) => candidate.kind === "INSPECT")!;
@@ -349,12 +459,9 @@ test("INSPECT uses a private real target even behind a numeric claim, preserves 
   const targetSocket = game.socketFor(target);
   const targetHandBefore = game.privateBySocket.get(targetSocket)!.hand;
 
-  const submitted = game.owner.playCard(actor.socket, {
-    ...command(game.roomId), cardId: card.cardId, claim: "PLUS_TWO", realTargetPlayerId: target,
-  });
-  assert.equal(submitted.state.publicRound?.publicGameState.currentClaim?.targetPlayerId, null);
-  assert.equal(JSON.stringify(submitted.state).includes("realTargetPlayerId"), false);
-  game.advance(10);
+  const submitted = game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "effect", cardId: card.cardId, targetPlayerId: target });
+  assert.equal(submitted.state.publicRound?.publicGameState.currentClaim, null);
+  assert.equal(submitted.state.publicRound?.phase, "turn_action");
 
   const inspection = game.privateBySocket.get(actor.socket)!.inspections.at(-1)!;
   assert.equal(inspection.targetPlayerId, target);
@@ -364,7 +471,7 @@ test("INSPECT uses a private real target even behind a numeric claim, preserves 
   assert.equal(game.privateBySocket.get("p0")!.inspections.length, actor.socket === "p0" ? 1 : 0, "host has no private inspection privilege");
   const publicRound = game.state().publicRound!;
   assert.equal(publicRound.publicGameState.lastEffect?.type, "inspect");
-  assert.equal(publicRound.publicGameState.lastEffect?.targetPlayerId, null, "the real INSPECT target is not a public consequence");
+  assert.equal(publicRound.publicGameState.lastEffect?.targetPlayerId, target, "the direct INSPECT target is a public consequence");
   const publicWire = JSON.stringify(publicRound);
   assert.equal(/inspections|knowledgeId|realTargetPlayerId|cardTransfers/.test(publicWire), false);
 
@@ -374,51 +481,13 @@ test("INSPECT uses a private real target even behind a numeric claim, preserves 
   assert.deepEqual(game.privateBySocket.get("inspector-restored")!.inspections.at(-1), inspection);
 });
 
-test("all six effect cards are cancelled when a lie is caught and still resolve after a false accusation", () => {
+test("Effect Cards cannot create Number claims or enter Call Bluff", () => {
   for (const kind of ["INSPECT", "STEAL", "SKIP", "REVERSE", "SHIELD", "WILD"] as const) {
-    const caught = createRound({ seed: findSeedFor(kind) });
-    const liar = caught.current();
-    const card = liar.privateState.hand.find((candidate) => candidate.kind === kind)!;
-    const target = caught.sessions[(caught.sessions.findIndex((session) => session.playerId === liar.playerId) + 2) % caught.sessions.length]!.playerId;
-    const targetHand = caught.privateBySocket.get(caught.socketFor(target))!.hand;
-    caught.owner.playCard(liar.socket, {
-      ...command(caught.roomId), cardId: card.cardId, claim: "PLUS_TWO",
-      ...(["INSPECT", "STEAL", "SKIP"].includes(kind) ? { realTargetPlayerId: target } : {}),
-    });
-    const challenger = caught.sockets.find((socket) => socket !== liar.socket)!;
-    caught.owner.callBluff(challenger, command(caught.roomId));
-    resolvePenalty(caught, liar.socket);
-    const cancelled = caught.state().publicRound!.publicGameState;
-    assert.equal(cancelled.counter, 0, `${kind} must not move the Button after a caught bluff`);
-    assert.equal(cancelled.lastEffect, null, `${kind} must not resolve after a caught bluff`);
-    assert.equal(cancelled.direction, "clockwise");
-    assert.equal(cancelled.shieldedPlayerIds.length, 0);
-    assert.equal(cancelled.skippedPlayerIds.length, 0);
-    assert.equal(caught.privateBySocket.get(liar.socket)!.inspections.length, 0);
-    assert.equal(caught.privateBySocket.get(liar.socket)!.cardTransfers.length, 0);
-    assert.deepEqual(caught.privateBySocket.get(caught.socketFor(target))!.hand, targetHand);
-
-    const truthful = createRound({ seed: findSeedFor(kind) });
-    const actor = truthful.current();
-    const truthfulCard = actor.privateState.hand.find((candidate) => candidate.kind === kind)!;
-    const actorIndex = truthful.sessions.findIndex((session) => session.playerId === actor.playerId);
-    const truthfulTarget = truthful.sessions[(actorIndex + 2) % truthful.sessions.length]!.playerId;
-    const accuser = truthful.sockets[(truthful.sockets.indexOf(actor.socket) + 1) % truthful.sockets.length]!;
-    truthful.owner.playCard(actor.socket, {
-      ...command(truthful.roomId), cardId: truthfulCard.cardId, claim: kind,
-      ...(["INSPECT", "STEAL", "SKIP"].includes(kind) ? { targetPlayerId: truthfulTarget, realTargetPlayerId: truthfulTarget } : {}),
-    });
-    truthful.owner.callBluff(accuser, command(truthful.roomId));
-    resolvePenalty(truthful, accuser);
-    if (kind === "WILD") truthful.owner.chooseWild(actor.socket, { ...command(truthful.roomId), movement: 2 });
-    const resolved = truthful.state().publicRound!.publicGameState;
-    assert.equal(resolved.counter, kind === "WILD" ? 2 : 1, `${kind} must resolve after a false accusation`);
-    assert.equal(truthful.state().publicRound!.scores.find((score) => score.playerId === actor.playerId)?.score, 1);
-    if (kind === "INSPECT") assert.equal(truthful.privateBySocket.get(actor.socket)!.inspections.length, 1);
-    if (kind === "STEAL") assert.equal(truthful.privateBySocket.get(actor.socket)!.cardTransfers.length, 1);
-    if (kind === "SKIP") assert.ok(resolved.skippedPlayerIds.includes(truthfulTarget));
-    if (kind === "REVERSE") assert.equal(resolved.direction, "counter_clockwise");
-    if (kind === "SHIELD") assert.ok(resolved.shieldedPlayerIds.includes(actor.playerId));
+    const game = createRound({ seed: findSeedFor(kind) });
+    const actor = game.current();
+    const card = actor.privateState.hand.find((candidate) => candidate.kind === kind)!;
+    assert.throws(() => game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "number", cardId: card.cardId, claim: "PLUS_TWO" }), { message: "ACTION_REJECTED" });
+    assert.equal(PlayButtonCardSchema.safeParse({ ...command(game.roomId), playType: "number", cardId: card.cardId, claim: kind }).success, false);
   }
 });
 
@@ -429,8 +498,7 @@ test("STEAL transfers one authoritative random card, exposes it only to the thie
   const target = game.sessions.find((session) => session.playerId !== actor.playerId)!.playerId;
   const targetSocket = game.socketFor(target);
   const targetBefore = game.privateBySocket.get(targetSocket)!.hand;
-  game.owner.playCard(actor.socket, { ...command(game.roomId), cardId: card.cardId, claim: "PLUS_TWO", realTargetPlayerId: target });
-  game.advance(10);
+  game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "effect", cardId: card.cardId, targetPlayerId: target });
 
   const targetAfter = game.privateBySocket.get(targetSocket)!.hand;
   const stolen = targetBefore.find((candidate) => !targetAfter.some((remaining) => remaining.cardId === candidate.cardId))!;
@@ -447,36 +515,34 @@ test("STEAL transfers one authoritative random card, exposes it only to the thie
   assert.equal(/cardTransfers|knowledgeId|realTargetPlayerId/.test(JSON.stringify(game.state())), false);
 });
 
-test("target schemas and server authorization reject missing, extra, self, unknown, or mismatched real targets", () => {
+test("direct Effect target schemas and server authorization reject missing, extra, self, or unknown targets", () => {
   const game = createRound({ seed: findSeedFor("INSPECT") });
   const actor = game.current();
   const inspect = actor.privateState.hand.find((candidate) => candidate.kind === "INSPECT")!;
   const target = game.sessions.find((session) => session.playerId !== actor.playerId)!.playerId;
-  assert.throws(() => game.owner.playCard(actor.socket, { ...command(game.roomId), cardId: inspect.cardId, claim: "PLUS_TWO" }), { message: "INVALID_TARGET" });
-  assert.throws(() => game.owner.playCard(actor.socket, { ...command(game.roomId), cardId: inspect.cardId, claim: "PLUS_TWO", realTargetPlayerId: actor.playerId }), { message: "INVALID_TARGET" });
-  assert.throws(() => game.owner.playCard(actor.socket, { ...command(game.roomId), cardId: inspect.cardId, claim: "PLUS_TWO", realTargetPlayerId: randomUUID() }), { message: "INVALID_TARGET" });
-  assert.throws(() => game.owner.playCard(actor.socket, { ...command(game.roomId), cardId: inspect.cardId, claim: "INSPECT", targetPlayerId: target, realTargetPlayerId: game.sessions.find((session) => session.playerId !== actor.playerId && session.playerId !== target)!.playerId }), { message: "INVALID_TARGET" });
+  assert.throws(() => game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "effect", cardId: inspect.cardId }), { message: "INVALID_TARGET" });
+  assert.throws(() => game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "effect", cardId: inspect.cardId, targetPlayerId: actor.playerId }), { message: "INVALID_TARGET" });
+  assert.throws(() => game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "effect", cardId: inspect.cardId, targetPlayerId: randomUUID() }), { message: "INVALID_TARGET" });
 
   const numeric = createRound({ seed: findSeedFor("PLUS_ONE") });
   const numericActor = numeric.current();
   const numberCard = numericActor.privateState.hand.find((candidate) => candidate.kind === "PLUS_ONE")!;
-  const other = numeric.sessions.find((session) => session.playerId !== numericActor.playerId)!.playerId;
-  assert.throws(() => numeric.owner.playCard(numericActor.socket, { ...command(numeric.roomId), cardId: numberCard.cardId, claim: "PLUS_ONE", realTargetPlayerId: other }), { message: "INVALID_TARGET" });
+  assert.throws(() => numeric.owner.playCard(numericActor.socket, { ...command(numeric.roomId), playType: "effect", cardId: numberCard.cardId }), { message: "ACTION_REJECTED" });
 
-  assert.equal(PlayButtonCardSchema.safeParse({ ...command(game.roomId), cardId: inspect.cardId, claim: "INSPECT", realTargetPlayerId: target }).success, false, "targeted public claims require a public target");
-  assert.equal(PlayButtonCardSchema.safeParse({ ...command(game.roomId), cardId: inspect.cardId, claim: "PLUS_TWO", realTargetPlayerId: target }).success, true, "a private real target may accompany a non-targeted bluff claim");
+  assert.equal(PlayButtonCardSchema.safeParse({ ...command(game.roomId), playType: "number", cardId: inspect.cardId, claim: "INSPECT" }).success, false, "Effect identities are not valid claims");
+  assert.equal(PlayButtonCardSchema.safeParse({ ...command(game.roomId), playType: "number", cardId: inspect.cardId, claim: "PLUS_TWO", targetPlayerId: target }).success, false, "Number claims cannot carry targets");
+  assert.equal(PlayButtonCardSchema.safeParse({ ...command(game.roomId), playType: "effect", cardId: inspect.cardId, targetPlayerId: target, realTargetPlayerId: target }).success, false, "the old private/fake target field is rejected");
 });
 
-test("target disconnects retain authoritative effects while a permanent departure fails safely without freezing", () => {
+test("reserved targets remain valid while permanent departures are rejected without freezing direct Effects", () => {
   const disconnected = createRound({ seed: findSeedFor("STEAL"), graceMs: 5_000 });
   const actor = disconnected.current();
   const steal = actor.privateState.hand.find((candidate) => candidate.kind === "STEAL")!;
   const targetSession = disconnected.sessions.find((session) => session.playerId !== actor.playerId)!;
   const targetSocket = disconnected.socketFor(targetSession.playerId);
   const before = disconnected.privateBySocket.get(targetSocket)!.hand.length;
-  disconnected.owner.playCard(actor.socket, { ...command(disconnected.roomId), cardId: steal.cardId, claim: "PLUS_TWO", realTargetPlayerId: targetSession.playerId });
   disconnected.owner.disconnect(targetSocket);
-  disconnected.advance(10);
+  disconnected.owner.playCard(actor.socket, { ...command(disconnected.roomId), playType: "effect", cardId: steal.cardId, targetPlayerId: targetSession.playerId });
   disconnected.owner.resume("target-restored", credential(targetSession));
   assert.equal(disconnected.privateBySocket.get("target-restored")!.hand.length, before - 1);
 
@@ -484,15 +550,13 @@ test("target disconnects retain authoritative effects while a permanent departur
   const departingActor = departed.current();
   const departingCard = departingActor.privateState.hand.find((candidate) => candidate.kind === "STEAL")!;
   const departingTarget = departed.sessions.find((session) => session.playerId !== departingActor.playerId)!;
-  departed.owner.playCard(departingActor.socket, { ...command(departed.roomId), cardId: departingCard.cardId, claim: "PLUS_TWO", realTargetPlayerId: departingTarget.playerId });
   const departingTargetSocket = departed.socketFor(departingTarget.playerId);
   departed.owner.leave(departingTargetSocket, departed.roomId);
-  departed.advance(10);
-  const connectedSocket = departed.sockets.find((socket) => socket !== departingTargetSocket)!;
-  assert.equal(departed.state(connectedSocket).publicRound?.phase, "turn_action");
-  assert.equal(departed.state(connectedSocket).publicRound?.publicGameState.counter, 1, "the common effect movement still resolves safely");
-  assert.equal(departed.state(connectedSocket).publicRound?.publicGameState.lastEffect?.type, "movement");
-  assert.equal(departed.privateBySocket.get(departingActor.socket)!.cardTransfers.length, 0);
+  assert.throws(() => departed.owner.playCard(departingActor.socket, { ...command(departed.roomId), playType: "effect", cardId: departingCard.cardId, targetPlayerId: departingTarget.playerId }), { message: "INVALID_TARGET" });
+  const validTarget = departed.sessions.find((session) => session.playerId !== departingActor.playerId && session.playerId !== departingTarget.playerId)!.playerId;
+  departed.owner.playCard(departingActor.socket, { ...command(departed.roomId), playType: "effect", cardId: departingCard.cardId, targetPlayerId: validTarget });
+  assert.equal(departed.state(departingActor.socket).publicRound?.phase, "turn_action");
+  assert.equal(departed.state(departingActor.socket).publicRound?.publicGameState.counter, 1);
 });
 
 test("REVERSE changes the next seat and SKIP is consumed exactly once in counter-clockwise order", () => {
@@ -533,28 +597,47 @@ test("Shield blocks exactly one hostile effect and every non-hostile card leaves
     const game = createRound({ seed: findSeedFor("SHIELD", safe) });
     const protectedPlayer = game.current();
     playTrusted(game, "SHIELD");
-    const safeActor = game.current();
     playTrusted(game, safe);
-    if (safe === "WILD") game.owner.chooseWild(safeActor.socket, { ...command(game.roomId), movement: 1 });
     assert.ok(game.state().publicRound!.publicGameState.shieldedPlayerIds.includes(protectedPlayer.playerId), `${safe} must not consume Shield`);
   }
 });
 
-test("WILD accepts only locked private choices, moves by exactly that value, and obeys overshoot", () => {
+test("WILD accepts only a private movement submitted with the direct play and applies exactly that value", () => {
   for (const movement of [1, 2, -1, -2] as const) {
     const game = createRound({ seed: findSeedFor("WILD") });
-    const actor = playTrusted(game, "WILD").actor;
-    game.owner.chooseWild(actor.socket, { ...command(game.roomId), movement });
+    const actor = game.current();
+    const card = actor.privateState.hand.find((candidate) => candidate.kind === "WILD")!;
+    game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "effect", cardId: card.cardId, movement });
     const effect = game.state().publicRound!.publicGameState.lastEffect!;
     assert.equal(effect.counterAfter, Math.max(0, movement));
     assert.equal(effect.movement, Math.max(0, movement));
+    assert.equal(effect.card, "WILD");
+    assert.equal(game.state().publicRound?.phase, "turn_action", "WILD must not create a second choice phase");
   }
-  assert.equal(WildChoiceSchema.safeParse({ ...command(randomUUID()), movement: 3 }).success, false);
-  assert.equal(WildChoiceSchema.safeParse({ ...command(randomUUID()), movement: 0 }).success, false);
+  assert.equal(WildMovementSchema.safeParse(3).success, false);
+  assert.equal(WildMovementSchema.safeParse(0).success, false);
 
   const overshoot = applyButtonMovement(9, 10, 2, false);
   assert.equal(overshoot.current, 9, "the same authoritative movement used by WILD rejects overshoot");
   assert.equal(overshoot.applied, 0);
+});
+
+test("incomplete targeted Effect or WILD choices cannot consume a card or freeze the authoritative turn", () => {
+  for (const kind of ["INSPECT", "WILD"] as const) {
+    const game = createRound({ seed: findSeedFor(kind) });
+    const actor = game.current();
+    const card = actor.privateState.hand.find((candidate) => candidate.kind === kind)!;
+    const handBefore = actor.privateState.hand;
+    assert.throws(
+      () => game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "effect", cardId: card.cardId }),
+      { message: kind === "WILD" ? "CHOICE_REQUIRED" : "INVALID_TARGET" },
+    );
+    assert.deepEqual(game.privateBySocket.get(actor.socket)?.hand, handBefore);
+    game.advance(1_000);
+    assert.notEqual(game.state().publicRound?.publicGameState.currentPlayerId, actor.playerId);
+    assert.deepEqual(game.privateBySocket.get(actor.socket)?.hand, handBefore);
+    assert.ok(game.state().publicRound?.publicEvents.some((event) => event.type === "TURN_TIMED_OUT" && event.actorPlayerId === actor.playerId));
+  }
 });
 
 test("Shield consumes itself against the next hostile targeted effect without skipping the protected player", () => {
@@ -582,20 +665,32 @@ test("exact target rewards are applied once, a CONTINUE majority runs exactly on
   assert.equal(game.state().publicRound?.phase, "last_chance");
   game.advance(600);
   const actors = new Set<string>();
-  for (let turn = 0; turn < game.sockets.length; turn++) {
+  let turn = 0;
+  while (game.state().publicRound?.phase !== "round_reveal") {
+    assert.ok(turn++ < game.sockets.length, "Last Chance must end after at most one rotation");
     const actor = game.current();
     assert.equal(actors.has(actor.playerId), false, "Last Chance may include each active player only once");
     actors.add(actor.playerId);
     const card = actor.privateState.hand[0];
     if (card) {
       const target = game.sessions.find((session) => session.playerId !== actor.playerId)!.playerId;
-      game.owner.playCard(actor.socket, { ...command(game.roomId), cardId: card.cardId, claim: card.kind, ...(["SKIP", "STEAL", "INSPECT"].includes(card.kind) ? { targetPlayerId: target, realTargetPlayerId: target } : {}) });
-      game.advance(10);
-      if (game.state().publicRound?.phase === "effect_choice") game.owner.chooseWild(actor.socket, { ...command(game.roomId), movement: -2 });
+      if (isNumberButtonCard(card.kind)) {
+        game.owner.playCard(actor.socket, { ...command(game.roomId), playType: "number", cardId: card.cardId, claim: card.kind });
+        game.advance(10);
+        game.advance(1);
+      } else {
+        game.owner.playCard(actor.socket, {
+          ...command(game.roomId),
+          playType: "effect",
+          cardId: card.cardId,
+          ...(isTargetedButtonCard(card.kind) ? { targetPlayerId: target } : {}),
+          ...(card.kind === "WILD" ? { movement: -2 as const } : {}),
+        });
+      }
     } else game.owner.basicButton(actor.socket, command(game.roomId));
   }
   const reveal = game.state().publicRound!;
-  assert.equal(actors.size, 4);
+  assert.ok(actors.size >= 1 && actors.size <= 4);
   assert.equal(reveal.phase, "round_reveal");
   assert.equal(reveal.publicGameState.counter, 10, "secured target cannot be undone during Last Chance");
   assert.equal(reveal.publicGameState.targetVote?.result, "continue");
@@ -623,11 +718,10 @@ test("private END votes are counted without identities and an exact tie uses the
 });
 
 test("duplicate play is idempotent, stale turns fail, reconnect restores the current private revision and spectator remains public-only", () => {
-  const game = createRound();
+  const game = createRound({ seed: findSeedFor("PLUS_ONE") });
   const actor = game.current();
-  const card = actor.privateState.hand[0]!;
-  const target = game.sessions.find((session) => session.playerId !== actor.playerId)!.playerId;
-  const payload = { ...command(game.roomId), cardId: card.cardId, claim: card.kind, ...(["SKIP", "STEAL", "INSPECT"].includes(card.kind) ? { targetPlayerId: target, realTargetPlayerId: target } : {}) };
+  const card = actor.privateState.hand.find((candidate) => candidate.kind === "PLUS_ONE")!;
+  const payload = { ...command(game.roomId), playType: "number" as const, cardId: card.cardId, claim: card.kind as NumberButtonCardKind };
   const first = game.owner.playCard(actor.socket, payload);
   const duplicate = game.owner.playCard(actor.socket, payload);
   assert.equal(duplicate.state.stateVersion, first.state.stateVersion);
@@ -716,17 +810,14 @@ test("reconnect restores authorized private state throughout every durable Butto
   const turn = createRound();
   reconnectAtPhase(turn, turn.current().socket, "turn-restored", "turn_action");
 
-  const effect = createRound({ seed: findSeedFor("WILD") });
-  const effectActor = playTrusted(effect, "WILD").actor;
-  assert.equal(effect.state().publicRound?.phase, "effect_choice");
-  reconnectAtPhase(effect, effectActor.socket, "effect-restored", "effect_choice", "wild_value");
+  const effect = createRound({ seed: findSeedFor("INSPECT") });
+  playTrusted(effect, "INSPECT", effect.sessions[1]!.playerId);
+  reconnectAtPhase(effect, effect.current().socket, "effect-restored", "turn_action");
 
-  const penalty = createRound();
+  const penalty = createRound({ seed: findSeedFor("MINUS_TWO") });
   const penaltyActor = penalty.current();
-  const penaltyCard = penaltyActor.privateState.hand[0]!;
-  const falseClaim = BUTTON_CARD_KINDS.find((kind) => kind !== penaltyCard.kind && !["SKIP", "STEAL", "INSPECT"].includes(kind))!;
-  const penaltyTarget = penalty.sessions.find((session) => session.playerId !== penaltyActor.playerId)!.playerId;
-  penalty.owner.playCard(penaltyActor.socket, { ...command(penalty.roomId), cardId: penaltyCard.cardId, claim: falseClaim, ...( ["SKIP", "STEAL", "INSPECT"].includes(penaltyCard.kind) ? { realTargetPlayerId: penaltyTarget } : {}) });
+  const penaltyCard = penaltyActor.privateState.hand.find((candidate) => candidate.kind === "MINUS_TWO")!;
+  penalty.owner.playCard(penaltyActor.socket, { ...command(penalty.roomId), playType: "number", cardId: penaltyCard.cardId, claim: "PLUS_TWO" });
   penalty.owner.callBluff(penalty.sockets.find((socket) => socket !== penaltyActor.socket)!, command(penalty.roomId));
   penalty.advance(1);
   assert.equal(penalty.state().publicRound?.phase, "penalty_discard");

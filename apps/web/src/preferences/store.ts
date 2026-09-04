@@ -7,12 +7,12 @@ export const preferencesSchema = z.strictObject({
   masterVolume: z.number().min(0).max(1),
   uiEnabled: z.boolean(),
   uiVolume: z.number().min(0).max(1),
-  motion: z.enum(["full", "reduced"]),
+  motion: z.enum(["auto", "full", "reduced"]),
 });
 export type Preferences = z.infer<typeof preferencesSchema>;
 export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({
   version: 1, masterEnabled: false, masterVolume: 0.45,
-  uiEnabled: true, uiVolume: 0.5, motion: "full",
+  uiEnabled: true, uiVolume: 0.5, motion: "auto",
 });
 export type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
 
@@ -25,7 +25,7 @@ export function parsePreferences(raw: string | null): Readonly<Preferences> {
 }
 
 export function isMotionReduced(preference: Preferences["motion"], deviceReduced: boolean) {
-  return deviceReduced || preference === "reduced";
+  return preference === "reduced" || preference === "auto" && deviceReduced;
 }
 
 const serverSnapshot = { preferences: DEFAULT_PREFERENCES, persistence: "loading" as "loading" | "available" | "unavailable" };

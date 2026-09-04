@@ -6,11 +6,11 @@ bluffing game implemented inside the existing authoritative `RoomOwner`.
 ## Round sequence
 
 ```text
-RULE_ACK → COUNTDOWN → TURN_ACTION → CHALLENGE
-                                  ├─ no challenge → real card resolves
-                                  └─ first challenge → CHALLENGE_REVEAL
-                                                       → PENALTY_DISCARD
-                                                       → real card resolves only when truthful
+RULE_ACK → COUNTDOWN → TURN_ACTION
+                         ├─ Number → face-down claim → CHALLENGE
+                         │                            ├─ timer/all opponents PASS → real Number resolves
+                         │                            └─ challenge → reveal → optional PENALTY_DISCARD
+                         └─ Effect → face-up direct resolution
 
 card resolution → next TURN_ACTION
 exact target → TARGET_VOTE
@@ -27,17 +27,17 @@ The locked 50-card standard composition is:
 
 | Card | Count | Resolution |
 | --- | ---: | --- |
-| +1 | 11 | Button +1 |
-| +2 | 9 | Button +2 |
-| +3 | 5 | Button +3 |
-| -1 | 7 | Button -1, floor 0 |
-| -2 | 4 | Button -2, floor 0 |
-| SKIP | 3 | Target skips next normal turn; Button +1 |
+| +1 | 12 | Button +1 |
+| +2 | 10 | Button +2 |
+| +3 | 7 | Button +3 |
+| -1 | 6 | Button -1, floor 0 |
+| -2 | 5 | Button -2, floor 0 |
+| SKIP | 2 | Target skips next legitimate turn; Button +1 |
 | STEAL | 2 | Random private card transfers from target; Button +1 |
 | INSPECT | 2 | Random target card is privately shown to inspector; Button +1 |
-| REVERSE | 3 | Reverse turn direction; Button +1 |
-| SHIELD | 2 | Block next hostile targeted effect; Button +1 |
-| WILD | 2 | Private choice of +1, +2, -1 or -2 only |
+| REVERSE | 2 | Reverse turn direction; Button +1 |
+| SHIELD | 1 | Block next hostile targeted effect; Button +1 |
+| WILD | 1 | Direct choice of +1, +2, -1 or -2; no extra +1 |
 
 Quick, Standard, Long and Epic decks scale proportionally for the active player
 count. Custom decks accept 30–200 cards and must contain at least five cards per
@@ -51,23 +51,47 @@ additional private discard; that loss is never refilled. Empty deck does not end
 the round. A player with no cards receives the server-approved Basic Button +1
 safety action.
 
-## Claim and challenge
+## Number claims and challenges
 
-The client sends an owned card ID and a claimed card kind. A targeted actual card
-also requires a private real target; a targeted claim requires a public claim
-target. The server looks up the actual card before independently validating both
-values. If the same targeted card is claimed truthfully, both targets must match.
-If a targeted actual card is hidden behind another claim, its private target is
-retained for authoritative resolution and is never added to the public claim.
-Players may claim kinds they do not own.
+Only Number Cards enter the bluff system. The client sends an owned Number card
+ID and one of the five Number identities as its claim. The server looks up the
+real card and rejects Effect cards submitted through this path. The Number lands
+face-down; public state contains the actor and claim, never the real Number.
+Players may claim a Number they do not own. Number Cards never target players.
 
-During the challenge window, the first valid opponent action wins atomically.
-No response means trust. An unchallenged card stays hidden and its real effect
+During the challenge window, each eligible opponent may CALL BLUFF or PASS. PASS
+is an authoritative, synchronized decision for that one claim and permanently
+locks that player out of challenging it. The first accepted CALL BLUFF closes the
+window. If every eligible opponent has passed, the server resolves immediately
+without waiting for the deadline. Partial pass decisions leave the existing
+timer running; no response at expiry means trust. A reconnect-reserved player
+remains eligible until the timer, while permanent departure removes that player
+from the all-pass calculation. An unchallenged card stays hidden and its real effect
 resolves. If actual and claim differ, the bluff is caught: the card is revealed,
 its effect is cancelled, challenger gains 1, bluffer loses 1 with score floor 0,
 and the bluffer chooses an extra discard. If they match, the false accusation is
 shown, the truthful card still resolves, the truthful player gains 1, challenger
 loses 1 with floor 0, and the challenger chooses the extra discard.
+
+## Direct Effect Cards
+
+INSPECT, STEAL and SKIP accept exactly one eligible stable player ID. REVERSE and
+SHIELD accept no target. WILD accepts no player target and includes one movement
+choice (`+1`, `+2`, `-1` or `-2`) in the play command. Effects land face-up,
+create no claim or challenge window, resolve immediately, consume the card, draw
+normally and advance the turn. INSPECT, STEAL, SKIP, REVERSE and SHIELD move the
+Button +1 after their effect; WILD applies only its chosen movement.
+
+Effect motion is a client presentation of the already-authoritative public and
+recipient-private projections. The face-up card travels to the table, then a
+short effect-specific cue explains target focus, transfer, skip, direction,
+shield, or WILD movement. Public STEAL remains face-down in transit. Only the
+thief or inspector receives the actual card identity in private state. Reduced
+motion removes large travel/flip cues while preserving result text and markers.
+
+The turn deadline remains active until a complete direct command arrives. If a
+player never supplies the required target or WILD value, the server times out
+the turn without consuming or auto-playing the card.
 
 ## Counter, target and vote
 
@@ -85,9 +109,10 @@ secured counter cannot move during this rotation.
 ## Privacy and reconnect
 
 Public state contains counter, target, turn, direction, deck/discard counts,
-hand counts, shields/skips, public claim/target, challenge result when revealed,
-effect result, vote totals/result, public scores and reveal-safe results. It
-never contains card IDs, deck order, private real targets, unchallenged actual
+hand counts, shields/skips, a Number claim, public pass decisions for the active
+challenge, challenge result when revealed,
+face-up Effect and its real target, vote totals/result, public scores and
+reveal-safe results. It never contains card IDs, deck order, unchallenged actual
 cards, stolen/penalty card identities, Inspect knowledge, Secret assignments,
 vote identities or random seeds. The thief receives stolen-card knowledge in
 their own private projection; the inspector alone receives Inspect knowledge.

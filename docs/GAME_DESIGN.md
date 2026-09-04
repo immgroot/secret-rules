@@ -8,17 +8,21 @@ selective truth and conflicting incentives create the comedy.
 
 The public objective is to land the Button counter on an exact target. Each turn:
 
-1. privately select one real card from a five-card hand;
-2. publicly claim any valid card identity;
-3. choose a public target when the claim is SKIP, STEAL or INSPECT;
-4. let opponents talk and decide whether to Call Bluff;
-5. resolve the challenge and the real card on the authoritative server;
-6. draw a replacement when the central deck still has cards.
+1. privately select one card from a five-card hand;
+2. for a Number, claim any Number and play it face-down for Call Bluff;
+3. for an Effect, choose its real target/value when required and play face-up;
+4. let the authoritative server resolve the challenge or direct Effect;
+5. draw a replacement when the central deck still has cards.
 
 The base game has five number cards (+1, +2, +3, -1, -2) and exactly six effect
 cards (SKIP, STEAL, INSPECT, REVERSE, SHIELD, WILD). Every non-Wild effect also
 moves the Button +1. Wild applies only its private chosen value. Positive
 overshoots fail; negative movement floors at zero.
+
+Number Cards are the only bluffable cards and claims are limited to the five
+Number identities. Effect Cards are direct actions: they create no claim, fake
+target or Call Bluff window. INSPECT, STEAL and SKIP use one real player target;
+REVERSE, SHIELD and WILD use no player target.
 
 The first accepted challenge decides the result. Catching a bluff gains 1 while
 the bluffer loses 1. A false accusation gives the truthful player 1 and costs
@@ -31,8 +35,8 @@ allows one final turn per active player while the counter remains secured.
 
 ## Secret Rules
 
-Button V2 Secrets reward controllable bluffing, correct challenges, truthful
-claims, negative/positive/effect use, distinct claims and social interactions.
+Button V2 Secrets reward Number bluffing, correct challenges, truthful Number
+claims, negative/positive Number use, direct Effect use and social interactions.
 Standard completion is worth 3; Hard completion is worth 5; failure is 0. Live
 completion stays hidden until reveal. Generation accounts for player count,
 expected turns, deck composition, difficulty, target relationships and recent

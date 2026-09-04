@@ -12,6 +12,22 @@ The web app never imports server code. The shared package never contains the
 server rule catalog, deck order, random seeds, credentials, full RoomState or
 another player's private data.
 
+## Account boundary
+
+The Next.js service owns the optional persistent account system. Better Auth
+uses Prisma and PostgreSQL for users, provider accounts, sessions, one-time
+verification/reset records, signing keys and database-backed request limits.
+Passwords are hashed with native Argon2id. Verification and reset messages are
+delivered by the isolated Resend adapter. Auth cookies never enter Socket.IO
+room snapshots or browser storage APIs.
+
+The realtime service may verify a short-lived Ed25519 JWT from the web service's
+public JWKS endpoint. The verified `sub` is attached to the socket and may be
+stored only in the server-private player record. It is an account association,
+not room authorization: the existing room-scoped bearer credential, membership,
+role, phase, turn and target checks remain mandatory. Tokenless sockets preserve
+guest play.
+
 ## One authoritative owner
 
 `RoomOwner` is the only mutation owner for rooms, membership, match state and
@@ -80,6 +96,12 @@ shared package can build first. The browser receives only
 `PORT`, and a cloud-safe `HOST` such as `0.0.0.0`. Rooms remain in one server
 process; horizontal scaling requires a separately approved ownership/adapter
 design.
+
+The web service also needs PostgreSQL, Better Auth, email and optional OAuth
+variables. Production applies committed Prisma migrations with
+`prisma migrate deploy`; it must never reset the database. If authenticated
+realtime association is enabled, the server receives the web service's public
+JWKS URL plus matching issuer and audience. See `AUTHENTICATION.md`.
 
 ## Future mini-games
 

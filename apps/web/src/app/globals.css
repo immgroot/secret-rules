@@ -9,6 +9,7 @@
 @import "../styles/interactions.css";
 @import "../styles/lobby.css";
 @import "../styles/game.css";
+@import "../styles/auth.css";
 
 :root {
   color-scheme: dark;
@@ -148,7 +149,9 @@ svg {
   }
 }
 
-[data-reduce-motion="true"] *, [data-reduce-motion="true"] *::before, [data-reduce-motion="true"] *::after {
+[data-reduce-motion="true"] *:not(.effect-phase-clock):not(.effect-reduced-confirmation),
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
   animation: none !important;
   transition: none !important;
   scroll-behavior: auto !important;
@@ -160,20 +163,6 @@ svg {
 
 html:has([data-reduce-motion="true"]) {
   scroll-behavior: auto;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-  *, *::before, *::after {
-    animation: none !important;
-    transition: none !important;
-    scroll-behavior: auto !important;
-  }
-  .card-stack {
-    transform: none !important;
-  }
 }
 
 @media (max-width: 640px) {

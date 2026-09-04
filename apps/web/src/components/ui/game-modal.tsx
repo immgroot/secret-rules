@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { GameButton } from "./game-button.tsx";
 import { GameIcon } from "../icons/game-icon.tsx";
 
-export function GameModal({ open, onClose, title, description, children, className = "", dismissible = true }: { open: boolean; onClose: () => void; title: string; description?: string; children: ReactNode; className?: string; dismissible?: boolean }) {
+export function GameModal({ open, onClose, title, description, children, className = "", dismissible = true, openDelayMs = 0 }: { open: boolean; onClose: () => void; title: string; description?: string; children: ReactNode; className?: string; dismissible?: boolean; openDelayMs?: number }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -13,14 +13,17 @@ export function GameModal({ open, onClose, title, description, children, classNa
     if (!dialog) return;
     if (!open) return;
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (!dialog.open) dialog.showModal();
+    const show = () => { if (!dialog.open && dialog.isConnected) dialog.showModal(); };
+    const timer = openDelayMs > 0 ? window.setTimeout(show, openDelayMs) : null;
+    if (timer === null) show();
     return () => {
+      if (timer !== null) window.clearTimeout(timer);
       // Programmatic cleanup must not call onClose: Strict Mode replays effects.
       // User dismissals are handled explicitly below.
       if (dialog.open) dialog.close();
       if (trigger?.isConnected) trigger.focus();
     };
-  }, [open]);
+  }, [open, openDelayMs]);
 
   return <dialog ref={dialogRef} className={`game-modal ${className}`} aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} onCancel={(event) => { event.preventDefault(); if (dismissible) onClose(); }} onKeyDown={(event) => {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (dismissible) onClose(); }

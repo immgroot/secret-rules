@@ -1,8 +1,18 @@
 import { parseServerEnvironment } from "./config/env.ts";
 import { createGameServer } from "./server.ts";
+import { createAccountIdentityVerifier } from "./auth/account-identity.ts";
 
 const environment = parseServerEnvironment(process.env);
-const application = createGameServer({ allowedOrigins: environment.ALLOWED_ORIGINS, graceMs: environment.RECONNECT_GRACE_MS, idleMs: environment.ROOM_IDLE_TIMEOUT_MS, afkMs: environment.AFK_TIMEOUT_MS });
+const verifyAccountToken = environment.AUTH_JWKS_URL && environment.AUTH_JWT_ISSUER && environment.AUTH_JWT_AUDIENCE
+  ? createAccountIdentityVerifier({ jwksURL: environment.AUTH_JWKS_URL, issuer: environment.AUTH_JWT_ISSUER, audience: environment.AUTH_JWT_AUDIENCE })
+  : undefined;
+const application = createGameServer({
+  allowedOrigins: environment.ALLOWED_ORIGINS,
+  graceMs: environment.RECONNECT_GRACE_MS,
+  idleMs: environment.ROOM_IDLE_TIMEOUT_MS,
+  afkMs: environment.AFK_TIMEOUT_MS,
+  ...(verifyAccountToken ? { verifyAccountToken } : {}),
+});
 const server = application.httpServer;
 
 server.on("error", () => {

@@ -60,7 +60,13 @@ export class LobbyClient {
     if (this.socket) return this.socket;
     const socket: LobbySocket = io(publicEnv.NEXT_PUBLIC_REALTIME_URL, {
       autoConnect: false, reconnection: true, reconnectionDelay: 500, reconnectionDelayMax: 4000,
-      timeout: 5000, auth: { protocolVersion: PROTOCOL_VERSION },
+      timeout: 5000,
+      auth: (provide: (data: { protocolVersion: typeof PROTOCOL_VERSION; accountToken?: string }) => void) => {
+        void fetch("/api/auth/token", { credentials: "same-origin", headers: { accept: "application/json" } })
+          .then(async (response) => response.ok ? response.json() as Promise<{ token?: unknown }> : null)
+          .then((result) => provide(typeof result?.token === "string" ? { protocolVersion: PROTOCOL_VERSION, accountToken: result.token } : { protocolVersion: PROTOCOL_VERSION }))
+          .catch(() => provide({ protocolVersion: PROTOCOL_VERSION }));
+      },
     });
     this.socket = socket;
     socket.on("connect", () => {
@@ -268,8 +274,8 @@ export class LobbyClient {
   acknowledgeRule = () => this.send(EVENTS.acknowledgeRule, {});
   playCard = (input: StateCommandInput<typeof EVENTS.playCard>) => this.send(EVENTS.playCard, input);
   callBluff = () => this.send(EVENTS.callBluff, {});
+  passChallenge = () => this.send(EVENTS.passChallenge, {});
   penaltyDiscard = (cardId: string) => this.send(EVENTS.penaltyDiscard, { cardId });
-  chooseWild = (movement: -2 | -1 | 1 | 2) => this.send(EVENTS.wildChoice, { movement });
   voteOnTarget = (choice: "end" | "continue") => this.send(EVENTS.targetVote, { choice });
   basicButton = () => this.send(EVENTS.basicButton, {});
   continueRound = () => this.send(EVENTS.continueRound, {});

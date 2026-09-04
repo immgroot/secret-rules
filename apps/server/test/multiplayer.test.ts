@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { io, type Socket } from "socket.io-client";
 import type { z } from "zod";
 import {
-  DEFAULT_ROOM_SETTINGS, EVENTS, PROTOCOL_VERSION, PublicRoomSnapshotSchema, PrivateRoundDeliverySchema, SessionResultSchema, StateResultSchema,
+  DEFAULT_ROOM_SETTINGS, EVENTS, PROTOCOL_VERSION, PublicRoomSnapshotSchema, PrivateRoundDeliverySchema, SessionResultSchema, StateResultSchema, isNumberButtonCard,
   LeaveResultSchema, ServerErrorSchema, type PrivatePlayerRoundState, type PublicRoomSnapshot, type ServerToClientEvents,
   type ServerError, type SessionResult,
 } from "@secret-rules/shared";
@@ -102,6 +102,34 @@ test("four real clients synchronize players, ready, settings, disconnect and sta
     assert.equal(wire.includes(host.session.token), false);
     assert.equal(wire.includes(cSession.session.token), false);
   }
+});
+
+test("authenticated Socket.IO identity is verified, server-private, and cannot replace room credentials", async (context) => {
+  const accepted: string[] = [];
+  const { connect } = await setup(context, { verifyAccountToken: async (token) => {
+    accepted.push(token);
+    if (token === "valid-account-token-for-groot") return "account-user-groot";
+    if (token === "valid-account-token-for-noor") return "account-user-noor";
+    throw new Error("invalid");
+  } });
+  const host = await connect({ auth: { protocolVersion: PROTOCOL_VERSION, accountToken: "valid-account-token-for-groot" } });
+  const session = success(await call(host, EVENTS.create, person("GROOT"), SessionResultSchema));
+  assert.deepEqual(accepted, ["valid-account-token-for-groot"]);
+  assert.equal(JSON.stringify(session.state).includes("account-user-groot"), false);
+  assert.equal(JSON.stringify(session.state).includes("accountUserId"), false);
+  host.socket.disconnect();
+  const otherAccount = await connect({ auth: { protocolVersion: PROTOCOL_VERSION, accountToken: "valid-account-token-for-noor" } });
+  const credential = { roomId: session.session.roomId, playerId: session.session.playerId, token: session.session.token };
+  const result = await call(otherAccount, EVENTS.resume, { ...request(), credential }, SessionResultSchema);
+  assert.ok(!result.ok);
+  assert.equal(result.error.code, "INVALID_SESSION");
+});
+
+test("invalid account JWTs are rejected while tokenless guest handshakes remain valid", async (context) => {
+  const { connect } = await setup(context, { verifyAccountToken: async () => { throw new Error("invalid"); } });
+  await assert.rejects(() => connect({ auth: { protocolVersion: PROTOCOL_VERSION, accountToken: "invalid-account-token-value" } }));
+  const guest = await connect();
+  assert.equal(guest.socket.connected, true);
 });
 
 test("validation, authorization, capacity, names and private session boundaries", async (context) => {
@@ -552,15 +580,16 @@ test("four clients converge on first-challenger Button V2 resolution, private pu
   const activeId = a.states.at(-1)!.publicRound!.publicGameState.currentPlayerId!;
   const activeIndex = sessions.findIndex((session) => session.session.playerId === activeId);
   const actor = peers[activeIndex]!;
-  const actual = actor.privateStates.at(-1)!.hand[0]!;
+  const actual = actor.privateStates.at(-1)!.hand.find((card) => isNumberButtonCard(card.kind));
+  assert.ok(actual, "the active player needs a Number Card for the challenge integration path");
   const claim = actual.kind === "PLUS_ONE" ? "PLUS_TWO" : "PLUS_ONE";
-  const malicious = await call(actor, EVENTS.playCard, { ...command(roomId), cardId: actual.cardId, claim, actualCard: actual.kind }, StateResultSchema);
+  const malicious = await call(actor, EVENTS.playCard, { ...command(roomId), playType: "number", cardId: actual.cardId, claim, actualCard: actual.kind }, StateResultSchema);
   assert.ok(!malicious.ok); assert.equal(malicious.error.code, "INVALID_PAYLOAD");
-  const spectatorPlay = await call(spectator, EVENTS.playCard, { ...command(roomId), cardId: randomUUID(), claim: "PLUS_ONE" }, StateResultSchema);
+  const spectatorPlay = await call(spectator, EVENTS.playCard, { ...command(roomId), playType: "number", cardId: randomUUID(), claim: "PLUS_ONE" }, StateResultSchema);
   assert.ok(!spectatorPlay.ok); assert.equal(spectatorPlay.error.code, "PLAYER_ONLY");
-  const outsiderPlay = await call(outsider, EVENTS.playCard, { ...command(roomId), cardId: randomUUID(), claim: "PLUS_ONE" }, StateResultSchema);
+  const outsiderPlay = await call(outsider, EVENTS.playCard, { ...command(roomId), playType: "number", cardId: randomUUID(), claim: "PLUS_ONE" }, StateResultSchema);
   assert.ok(!outsiderPlay.ok); assert.equal(outsiderPlay.error.code, "INVALID_SESSION");
-  const playPayload = { ...command(roomId), cardId: actual.cardId, claim };
+  const playPayload = { ...command(roomId), playType: "number", cardId: actual.cardId, claim };
   const played = await call(actor, EVENTS.playCard, playPayload, StateResultSchema);
   assert.ok(played.ok); assert.equal(played.state.publicRound?.phase, "challenge");
   assert.equal(JSON.stringify(played.state).includes(actual.cardId), false);
@@ -585,4 +614,49 @@ test("four clients converge on first-challenger Button V2 resolution, private pu
   const publicWire = JSON.stringify(spectator.states.at(-1));
   assert.equal(publicWire.includes(pending.hand[0]!.cardId), false);
   assert.equal(spectator.privateStates.length, 0);
+});
+
+test("GROOT, NIDA, MUS, and NOOR synchronize PASS decisions and resolve the final pass immediately", async (context) => {
+  const { connect } = await setup(context, { buttonCountdownMs: 15, challengeTimerMs: 2_000, challengeRevealMs: 10, sweepMs: 5 });
+  const [groot, nida, mus, noor, spectator] = await Promise.all([connect(), connect(), connect(), connect(), connect()]);
+  const host = success(await call(groot, EVENTS.create, person("GROOT"), SessionResultSchema));
+  const peers = [groot, nida, mus, noor];
+  const sessions = [host,
+    success(await call(nida, EVENTS.join, { ...person("NIDA"), roomCode: host.state.roomCode }, SessionResultSchema)),
+    success(await call(mus, EVENTS.join, { ...person("MUS"), roomCode: host.state.roomCode }, SessionResultSchema)),
+    success(await call(noor, EVENTS.join, { ...person("NOOR"), roomCode: host.state.roomCode }, SessionResultSchema)),
+  ];
+  await call(spectator, EVENTS.join, { ...person("WATCHER"), roomCode: host.state.roomCode, role: "spectator" }, SessionResultSchema);
+  const roomId = host.state.roomId;
+  for (const peer of peers) assert.ok((await call(peer, EVENTS.ready, { ...command(roomId), ready: true }, StateResultSchema)).ok);
+  assert.ok((await call(groot, EVENTS.startGame, command(roomId), StateResultSchema)).ok);
+  await eventually(() => peers.every((peer) => peer.privateStates.at(-1)?.hand.length === 5));
+  for (const peer of peers) assert.ok((await call(peer, EVENTS.acknowledgeRule, command(roomId), StateResultSchema)).ok);
+  await eventually(() => peers.every((peer) => peer.states.at(-1)?.publicRound?.phase === "turn_action"));
+  const activeId = groot.states.at(-1)!.publicRound!.publicGameState.currentPlayerId!;
+  const activeIndex = sessions.findIndex((session) => session.session.playerId === activeId);
+  const actor = peers[activeIndex]!;
+  const actual = actor.privateStates.at(-1)!.hand.find((card) => isNumberButtonCard(card.kind));
+  assert.ok(actual);
+  assert.ok((await call(actor, EVENTS.playCard, { ...command(roomId), playType: "number", cardId: actual.cardId, claim: actual.kind }, StateResultSchema)).ok);
+  const responders = peers.filter((peer) => peer !== actor);
+  const activePass = await call(actor, EVENTS.passChallenge, command(roomId), StateResultSchema);
+  assert.ok(!activePass.ok); assert.equal(activePass.error.code, "ACTION_REJECTED");
+  const spectatorPass = await call(spectator, EVENTS.passChallenge, command(roomId), StateResultSchema);
+  assert.ok(!spectatorPass.ok); assert.equal(spectatorPass.error.code, "PLAYER_ONLY");
+  for (const [index, peer] of responders.entries()) {
+    const result = await call(peer, EVENTS.passChallenge, command(roomId), StateResultSchema);
+    assert.ok(result.ok);
+    if (index < responders.length - 1) {
+      assert.equal(result.state.publicRound?.phase, "challenge");
+      assert.equal(result.state.publicRound?.publicGameState.challenge?.passedPlayerIds?.length, index + 1);
+    }
+  }
+  await eventually(() => [...peers, spectator].every((peer) => peer.states.at(-1)?.publicRound?.phase === "turn_action"));
+  for (const peer of [...peers, spectator]) {
+    const round = peer.states.at(-1)!.publicRound!;
+    assert.ok(round.publicEvents.some((event) => event.type === "NO_CHALLENGE"));
+    assert.equal(round.publicGameState.challenge, null);
+    assert.notEqual(round.publicGameState.currentPlayerId, activeId);
+  }
 });

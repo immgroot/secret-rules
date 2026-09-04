@@ -10,6 +10,7 @@ import {
 import { RoomOwner, LobbyError, type RoomOwnerOptions } from "../rooms/room-owner.ts";
 import { RoomPasswords } from "../rooms/passwords.ts";
 import { RateLimiter } from "./rate-limiter.ts";
+import type { AccountIdentityVerifier } from "../auth/account-identity.ts";
 
 const schemas: Readonly<Record<string, z.ZodType>> = COMMAND_SCHEMAS;
 export interface RealtimeOptions {
@@ -23,6 +24,7 @@ export interface RealtimeOptions {
   turnTimerMs?: number;
   challengeTimerMs?: number;
   challengeRevealMs?: number;
+  verifyAccountToken?: AccountIdentityVerifier;
 }
 
 export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions) {
@@ -71,15 +73,28 @@ export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions)
   const cleanup = setInterval(() => { rooms.sweep(); limiter.sweep(); }, options.sweepMs ?? 1000);
   cleanup.unref();
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     if ((ipConnections.get(socket.handshake.address) ?? 0) >= 40) {
       next(Object.assign(new Error("Connection limit reached."), { data: ServerErrorSchema.parse(protocolError("SERVER_BUSY")) }));
       return;
     }
-    if (!HandshakeSchema.safeParse(socket.handshake.auth).success) {
+    const handshake = HandshakeSchema.safeParse(socket.handshake.auth);
+    if (!handshake.success) {
       next(Object.assign(new Error("Unsupported handshake."), { data: ServerErrorSchema.parse(protocolError("INVALID_PAYLOAD")) }));
       return;
     }
+    if (handshake.data.accountToken) {
+      if (!options.verifyAccountToken) {
+        next(Object.assign(new Error("Account identity verification is not configured."), { data: ServerErrorSchema.parse(protocolError("INVALID_SESSION")) }));
+        return;
+      }
+      try {
+        socket.data.accountUserId = await options.verifyAccountToken(handshake.data.accountToken);
+      } catch {
+        next(Object.assign(new Error("Invalid account identity."), { data: ServerErrorSchema.parse(protocolError("INVALID_SESSION")) }));
+        return;
+      }
+    } else socket.data.accountUserId = null;
     next();
   });
 
@@ -148,7 +163,7 @@ export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions)
     }
 
     socket.on(EVENTS.create, (input, reply) => void respondAsync(SessionResultSchema, reply,
-      () => enter(EVENTS.create, input, () => rooms.create(socket.id, input))));
+      () => enter(EVENTS.create, input, () => rooms.create(socket.id, input, socket.data.accountUserId ?? null))));
     socket.on(EVENTS.join, (input, reply) => void respondAsync(SessionResultSchema, reply,
       () => enter(EVENTS.join, input, async () => {
         const challenge = rooms.joinChallenge(socket.id, input);
@@ -158,7 +173,7 @@ export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions)
         }
         requireConnected();
         // Recheck lock, membership, capacity and password revision AFTER asynchronous verification.
-        return rooms.join(socket.id, input, { roomId: challenge.roomId, version: challenge.version });
+        return rooms.join(socket.id, input, { roomId: challenge.roomId, version: challenge.version }, socket.data.accountUserId ?? null);
       })));
     socket.on(EVENTS.password, (input, reply) => void respondAsync(StateResultSchema, reply, async () => {
       const version = rooms.passwordRevision(socket.id, input.roomId);
@@ -166,7 +181,7 @@ export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions)
       requireConnected();
       return rooms.setPassword(socket.id, input, digest, version);
     }));
-    socket.on(EVENTS.resume, (input, reply) => respond(SessionResultSchema, reply, () => rooms.resume(socket.id, input.credential)));
+    socket.on(EVENTS.resume, (input, reply) => respond(SessionResultSchema, reply, () => rooms.resume(socket.id, input.credential, socket.data.accountUserId ?? null)));
     socket.on(EVENTS.ready, (input, reply) => respond(StateResultSchema, reply, () => rooms.setReady(socket.id, input)));
     socket.on(EVENTS.settings, (input, reply) => respond(StateResultSchema, reply, () => rooms.updateSettings(socket.id, input)));
     socket.on(EVENTS.requestState, (input, reply) => respond(StateResultSchema, reply, () => rooms.requestState(socket.id, input.roomId)));
@@ -186,8 +201,8 @@ export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions)
     socket.on(EVENTS.acknowledgeRule, (input, reply) => respond(StateResultSchema, reply, () => rooms.acknowledgeRule(socket.id, input)));
     socket.on(EVENTS.playCard, (input, reply) => respond(StateResultSchema, reply, () => rooms.playCard(socket.id, input)));
     socket.on(EVENTS.callBluff, (input, reply) => respond(StateResultSchema, reply, () => rooms.callBluff(socket.id, input)));
+    socket.on(EVENTS.passChallenge, (input, reply) => respond(StateResultSchema, reply, () => rooms.passChallenge(socket.id, input)));
     socket.on(EVENTS.penaltyDiscard, (input, reply) => respond(StateResultSchema, reply, () => rooms.penaltyDiscard(socket.id, input)));
-    socket.on(EVENTS.wildChoice, (input, reply) => respond(StateResultSchema, reply, () => rooms.chooseWild(socket.id, input)));
     socket.on(EVENTS.targetVote, (input, reply) => respond(StateResultSchema, reply, () => rooms.targetVote(socket.id, input)));
     socket.on(EVENTS.basicButton, (input, reply) => respond(StateResultSchema, reply, () => rooms.basicButton(socket.id, input)));
     socket.on(EVENTS.continueRound, (input, reply) => respond(StateResultSchema, reply, () => rooms.continueRound(socket.id, input)));

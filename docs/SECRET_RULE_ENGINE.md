@@ -10,7 +10,7 @@ per-player anti-repeat history established in Phase 2.
 The playable game selects only the 22 templates in
 `apps/server/src/games/button/catalog.ts`. They cover successful bluffing,
 correct challenges, false accusations, truthful resolution, positive/negative
-cards, targeted effects, distinct claims, effect variety and player-specific
+Number cards, direct targeted effects, distinct Number claims, effect variety and player-specific
 social goals. Standard templates use medium difficulty and pay 3 points; Hard
 templates use hard difficulty and pay 5.
 
@@ -20,7 +20,7 @@ Generation receives a server-computed balance context:
 - target value;
 - expected turns per player;
 - active player identities and relationship target availability;
-- configured Chaos weighting and recent rule history.
+- configured Secret Intensity weighting (`chill`, `normal`, `chaos`) and recent rule history.
 
 Threshold generators clamp goals to expected opportunity. Target selectors use
 active players only and never select the owner. Candidate validation rejects
@@ -28,10 +28,16 @@ missing parameters, impossible thresholds, unsupported capabilities, duplicates,
 hard incompatibilities and immediate recent repeats. A bounded, validated V2
 fallback exists if candidate search cannot produce a full set.
 
+All 22 Button templates were audited for the split. Bluff, truth and challenge
+templates consume Number outcomes only. Effect templates count direct resolved
+Effects and real targets; none requires an Effect claim, Effect bluff or fake
+target. Because Effects occupy only about 20% of scaled decks, the two Effect
+goals remain low-count and lower-weight while Number/social goals dominate.
+
 ## Evaluation and privacy
 
 RoomOwner records structured `BUTTON_V2_OUTCOME` events after authoritative
-challenge/effect resolution. The evaluator never consumes a client claim that
+Number challenge or direct-Effect resolution. The evaluator never consumes a client claim that
 has not first passed ownership/phase validation and server resolution. It updates
 server-private progress after relevant events and performs final evaluation after
 `ROUND_RESOLVED`.

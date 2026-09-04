@@ -181,9 +181,11 @@ test("blocked storage still permits local preference changes and subscriptions c
   assert.equal(changes, 2);
 });
 
-test("device reduced motion wins even when the saved preference is Full", () => {
+test("Auto follows the device while explicit Full and Reduced override it", () => {
   assert.equal(isMotionReduced("full", false), false);
-  assert.equal(isMotionReduced("full", true), true);
+  assert.equal(isMotionReduced("full", true), false);
+  assert.equal(isMotionReduced("auto", false), false);
+  assert.equal(isMotionReduced("auto", true), true);
   assert.equal(isMotionReduced("reduced", false), true);
   assert.equal(isMotionReduced("reduced", true), true);
 });

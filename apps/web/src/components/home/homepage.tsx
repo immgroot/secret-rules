@@ -14,10 +14,11 @@ import { HowToPlay } from "./how-to-play.tsx";
 import { SettingsPanel } from "./settings-panel.tsx";
 import { VideoSection } from "./video-section.tsx";
 import { logoClickCount } from "./interaction-state.ts";
+import { AuthNavigation } from "../auth/auth-navigation.tsx";
 
 const steps = [
   { title: "GET DEALT", text: "Receive five private cards and one private Secret." },
-  { title: "PLAY & CLAIM", text: "Put down a real card, then publicly claim any valid card." },
+  { title: "PLAY OR ACT", text: "Bluff with a face-down Number, or play an Effect face-up." },
   { title: "TRUST OR CHALLENGE", text: "Let the claim resolve or be first to call the bluff." },
   { title: "MOVE THE TABLE", text: "Card effects change the Button. Hit the target exactly." },
   { title: "REVEAL & SCORE", text: "Complete your Secret for bonus points. Highest match score wins." },
@@ -52,14 +53,14 @@ function HomepageContent() {
     <a className="skip-link" href="#main">Skip to content</a>
     <header className="site-header content-width">
       <div className="brand-group"><a className={`brand-link ${classified ? "brand-link--classified" : ""}`} href="#" aria-label="SECRET RULES home" onClick={logoClicked}><FullLogo /></a><div className="classified-region" role="status">{classified && <span className="classified-note">YOU’RE NOT SUPPOSED TO KNOW THAT.</span>}</div></div>
-      <nav aria-label="Main navigation"><GameButton className="nav-link" variant="ghost" onClick={() => setOverlay("tutorial")}>HOW TO PLAY</GameButton><span className="nav-divider" aria-hidden="true" /><GameButton variant="ghost" size="icon" aria-label="Open settings" onClick={() => setOverlay("settings")}><GameIcon name="settings" /></GameButton></nav>
+      <nav aria-label="Main navigation"><GameButton className="nav-link" variant="ghost" onClick={() => setOverlay("tutorial")}>HOW TO PLAY</GameButton><AuthNavigation /><button className="auth-nav-play" onClick={() => roomAction("create")}>PLAY</button><span className="nav-divider" aria-hidden="true" /><GameButton variant="ghost" size="icon" aria-label="Open settings" onClick={() => setOverlay("settings")}><GameIcon name="settings" /></GameButton></nav>
     </header>
     <main id="main" tabIndex={-1}>
       <section className="hero content-width" aria-labelledby="hero-title">
         <div className="hero-copy">
           <p className="hero-kicker"><span className="kicker-dot" /> SAME GAME. DIFFERENT RULES.</p>
           <div className="hero-title-wrap"><h1 id="hero-title">SECRET<br /><span>RULES<span className="title-period">.</span></span></h1><span className="trust-stamp" aria-hidden="true">FRIENDSHIP<br />NOT GUARANTEED</span></div>
-          <p className="hero-subtitle">A 4–10 player online bluffing game.<br /><span>Play hidden cards. Claim anything. Follow your Secret.</span></p>
+          <p className="hero-subtitle">A 4–10 player online bluffing game.<br /><span>Hide a Number. Claim a Number. Follow your Secret.</span></p>
           <div className="hero-actions"><GameButton icon={<GameIcon name="create" />} onClick={() => roomAction("create")} aria-describedby="room-preview-note">CREATE ROOM<GameIcon name="arrow" size={19} /></GameButton><GameButton variant="secondary" icon={<GameIcon name="join" />} onClick={() => roomAction("join")} aria-describedby="room-preview-note">JOIN ROOM</GameButton></div>
           <p className="action-note" id="room-preview-note">{resumeRoomCode ? <Link href={`/room/${resumeRoomCode}`}>RETURN TO YOUR ROOM: {resumeRoomCode} →</Link> : "GET 4–10 FRIENDS. SHARE THE CODE. TRUST NOBODY."}</p>
           <div className="hero-meta"><span><GameIcon name="players" size={18} /> 4–10 PLAYERS ONLINE</span><span className="meta-divider" /><span>PRIVATE ROOMS · NO DOWNLOAD</span></div>
@@ -72,7 +73,7 @@ function HomepageContent() {
         <ol className="steps-list">{steps.map((step, index) => <li key={step.title}><span className="step-number" aria-hidden="true">0{index + 1}</span><div><h3>{step.title}</h3><p>{step.text}</p></div></li>)}</ol>
       </section>
       <section className="demo-section content-width section-enter" aria-labelledby="demo-title">
-        <div className="demo-copy"><StatusBadge icon="secret">A PEEK INSIDE THE BOX</StatusBadge><h2 id="demo-title">THE BUTTON<span> V2.</span></h2><p className="demo-lead">One face-down card.<br />Several questionable stories.</p><p className="demo-description">Play a real card privately, claim anything publicly, then see who believes you.</p><p className="static-label"><span /> QUICK GAMEPLAY PREVIEW</p></div>
+        <div className="demo-copy"><StatusBadge icon="secret">A PEEK INSIDE THE BOX</StatusBadge><h2 id="demo-title">THE BUTTON<span> V2.</span></h2><p className="demo-lead">One face-down Number.<br />Several questionable stories.</p><p className="demo-description">Play a real Number privately, claim a Number publicly, then see who believes you.</p><p className="static-label"><span /> QUICK GAMEPLAY PREVIEW</p></div>
         <ButtonDemo />
       </section>
       <VideoSection onOpenTutorial={() => setOverlay("tutorial")} />

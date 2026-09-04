@@ -7,6 +7,19 @@ export const BUTTON_CARD_KINDS = [
 export const ButtonCardKindSchema = z.enum(BUTTON_CARD_KINDS);
 export type ButtonCardKind = z.infer<typeof ButtonCardKindSchema>;
 
+export const NUMBER_BUTTON_CARDS = ["PLUS_ONE", "PLUS_TWO", "PLUS_THREE", "MINUS_ONE", "MINUS_TWO"] as const;
+export const NumberButtonCardKindSchema = z.enum(NUMBER_BUTTON_CARDS);
+export type NumberButtonCardKind = z.infer<typeof NumberButtonCardKindSchema>;
+
+export const EFFECT_BUTTON_CARDS = ["SKIP", "STEAL", "INSPECT", "REVERSE", "SHIELD", "WILD"] as const;
+export const EffectButtonCardKindSchema = z.enum(EFFECT_BUTTON_CARDS);
+export type EffectButtonCardKind = z.infer<typeof EffectButtonCardKindSchema>;
+
+export const isNumberButtonCard = (kind: ButtonCardKind): kind is NumberButtonCardKind =>
+  NumberButtonCardKindSchema.safeParse(kind).success;
+export const isEffectButtonCard = (kind: ButtonCardKind): kind is EffectButtonCardKind =>
+  EffectButtonCardKindSchema.safeParse(kind).success;
+
 export const BUTTON_CARD_LABELS: Readonly<Record<ButtonCardKind, string>> = Object.freeze({
   PLUS_ONE: "+1", PLUS_TWO: "+2", PLUS_THREE: "+3", MINUS_ONE: "-1", MINUS_TWO: "-2",
   SKIP: "SKIP", STEAL: "STEAL", INSPECT: "INSPECT", REVERSE: "REVERSE", SHIELD: "SHIELD", WILD: "WILD",

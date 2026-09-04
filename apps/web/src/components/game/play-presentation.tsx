@@ -1,18 +1,14 @@
 import type { ReactNode } from "react";
-import { BUTTON_CARD_LABELS, type ButtonCardKind } from "@secret-rules/shared";
+import { BUTTON_CARD_LABELS, type NumberButtonCardKind } from "@secret-rules/shared";
 
 export function RealClaimComparison({
   realCard,
   claim,
-  realTargetName,
-  claimTargetName,
   action,
   className = "",
 }: {
-  realCard: ButtonCardKind;
-  claim: ButtonCardKind;
-  realTargetName?: string | null;
-  claimTargetName?: string | null;
+  realCard: NumberButtonCardKind;
+  claim: NumberButtonCardKind;
   action?: ReactNode;
   className?: string;
 }) {
@@ -20,13 +16,13 @@ export function RealClaimComparison({
     <div data-visibility="private">
       <span>YOUR REAL CARD</span>
       <strong>{BUTTON_CARD_LABELS[realCard]}</strong>
-      <small>PRIVATE{realTargetName ? ` · ${realTargetName.toUpperCase()}` : ""}</small>
+      <small>PRIVATE · NUMBER CARD</small>
     </div>
     <span className="play-confirmation__arrow" aria-hidden="true">→</span>
     <div data-visibility="public">
       <span>YOUR CLAIM</span>
       <strong>{BUTTON_CARD_LABELS[claim]}</strong>
-      <small>PUBLIC{claimTargetName ? ` · ${claimTargetName.toUpperCase()}` : ""}</small>
+      <small>PUBLIC · NUMBER CLAIM</small>
     </div>
     {action}
   </section>;

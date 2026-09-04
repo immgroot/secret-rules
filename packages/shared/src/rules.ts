@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ButtonModeSchema } from "./button-modes.ts";
-import { ButtonCardKindSchema, ButtonCardSchema, ButtonDirectionSchema, ButtonVoteChoiceSchema } from "./button-v2.ts";
+import { ButtonCardKindSchema, ButtonCardSchema, ButtonDirectionSchema, ButtonVoteChoiceSchema, NumberButtonCardKindSchema } from "./button-v2.ts";
 
 export const RULE_CATEGORIES = ["personal", "target", "avoidance", "timing", "sequence", "cooperation", "sabotage", "protection", "social", "prediction", "private_knowledge", "hidden_ability", "conditional", "wild"] as const;
 export const RULE_RARITIES = ["common", "uncommon", "rare", "wild"] as const;
@@ -64,7 +64,6 @@ export const PrivateInspectionSchema = z.strictObject({ knowledgeId: z.uuid(), t
 export const PrivateCardTransferSchema = z.strictObject({ knowledgeId: z.uuid(), sourcePlayerId: z.uuid(), card: ButtonCardKindSchema, receivedAt: z.number().int().nonnegative() });
 export const PrivatePendingChoiceSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("penalty_discard") }),
-  z.strictObject({ kind: z.literal("wild_value") }),
   z.strictObject({ kind: z.literal("target_vote"), choice: ButtonVoteChoiceSchema.nullable() }),
 ]);
 export const PrivatePlayerRoundStateSchema = z.strictObject({
@@ -77,16 +76,26 @@ export const PrivatePlayerRoundStateSchema = z.strictObject({
 export type PrivatePlayerRoundState = z.infer<typeof PrivatePlayerRoundStateSchema>;
 
 export const PublicRoundPlayerStatusSchema = z.strictObject({ playerId: z.uuid(), connected: z.boolean(), acknowledged: z.boolean() });
-export const ROUND_PHASES = ["rule_ack", "countdown", "turn_action", "challenge", "challenge_reveal", "penalty_discard", "effect_choice", "turn_resolution", "target_vote", "last_chance", "round_reveal", "match_complete"] as const;
+export const ROUND_PHASES = ["rule_ack", "countdown", "turn_action", "challenge", "challenge_reveal", "penalty_discard", "turn_resolution", "target_vote", "last_chance", "round_reveal", "match_complete"] as const;
 export const RoundPhaseSchema = z.enum(ROUND_PHASES);
 export type RoundPhase = z.infer<typeof RoundPhaseSchema>;
 export const PublicButtonTimerSchema = z.strictObject({ kind: z.enum(["turn", "challenge", "vote"]), deadlineAt: z.number().int().nonnegative(), durationMs: z.number().int().positive(), serverNow: z.number().int().nonnegative() });
-export const PublicButtonClaimSchema = z.strictObject({ actorPlayerId: z.uuid(), claim: ButtonCardKindSchema, targetPlayerId: z.uuid().nullable(), claimedAt: z.number().int().nonnegative() });
-export const PublicButtonChallengeSchema = z.strictObject({ challengerPlayerId: z.uuid().nullable(), outcome: z.enum(["bluff_caught", "false_accusation"]).nullable(), revealedCard: ButtonCardKindSchema.nullable(), resolvedAt: z.number().int().nonnegative().nullable() });
+// Parse and discard the protocol-v10 claim target so a cached snapshot can be
+// upgraded once; current state and the inferred output type never contain it.
+export const PublicButtonClaimSchema = z.strictObject({
+  actorPlayerId: z.uuid(), claim: NumberButtonCardKindSchema, claimedAt: z.number().int().nonnegative(),
+  targetPlayerId: z.uuid().nullable().optional(),
+}).transform((value) => ({ actorPlayerId: value.actorPlayerId, claim: value.claim, claimedAt: value.claimedAt }));
+export const PublicButtonChallengeSchema = z.strictObject({
+  challengerPlayerId: z.uuid().nullable(), outcome: z.enum(["bluff_caught", "false_accusation"]).nullable(),
+  revealedCard: NumberButtonCardKindSchema.nullable(), resolvedAt: z.number().int().nonnegative().nullable(),
+  // Optional on the wire so stale cached/trailer fixtures remain parseable; the live v12 server always sends it.
+  passedPlayerIds: z.array(z.uuid()).max(9).optional(),
+});
 export const PublicTargetVoteSchema = z.strictObject({ submitted: z.number().int().nonnegative().max(10), eligible: z.number().int().min(1).max(10), result: ButtonVoteChoiceSchema.nullable(), tieBroken: z.boolean() });
 export const PublicButtonEffectSchema = z.strictObject({
   effectId: z.uuid(), type: z.enum(["movement", "skip", "steal", "inspect", "reverse", "shield", "shield_blocked", "basic"]),
-  actorPlayerId: z.uuid(), targetPlayerId: z.uuid().nullable(), movement: z.number().int().min(-3).max(3).nullable(),
+  card: ButtonCardKindSchema.nullable().optional(), actorPlayerId: z.uuid(), targetPlayerId: z.uuid().nullable(), movement: z.number().int().min(-3).max(3).nullable(),
   counterBefore: z.number().int().nonnegative(), counterAfter: z.number().int().nonnegative(), at: z.number().int().nonnegative(),
 });
 export type PublicButtonEffect = z.infer<typeof PublicButtonEffectSchema>;
@@ -103,8 +112,8 @@ export const ButtonV2PublicStateSchema = z.strictObject({
 });
 export type ButtonV2PublicState = z.infer<typeof ButtonV2PublicStateSchema>;
 export const PublicRoundEventSchema = z.strictObject({
-  eventId: z.uuid(), type: z.enum(["ROUND_PREPARED", "PLAYER_ACKNOWLEDGED", "COUNTDOWN_STARTED", "ROUND_STARTED", "TURN_STARTED", "TURN_TIMED_OUT", "CARD_PLAYED", "CHALLENGE_CALLED", "NO_CHALLENGE", "BLUFF_CAUGHT", "FALSE_ACCUSATION", "PENALTY_DISCARDED", "EFFECT_RESOLVED", "TARGET_SECURED", "VOTE_STARTED", "VOTE_RESOLVED", "LAST_CHANCE_STARTED", "TURN_SKIPPED", "ROUND_RESOLVED", "REVEAL_STARTED", "ROUND_CONTINUED"]),
-  at: z.number().int().nonnegative(), actorPlayerId: z.uuid().nullable(), targetPlayerId: z.uuid().nullable(), claim: ButtonCardKindSchema.nullable(), revealedCard: ButtonCardKindSchema.nullable(), movement: z.number().int().min(-3).max(3).nullable(),
+  eventId: z.uuid(), type: z.enum(["ROUND_PREPARED", "PLAYER_ACKNOWLEDGED", "COUNTDOWN_STARTED", "ROUND_STARTED", "TURN_STARTED", "TURN_TIMED_OUT", "CARD_PLAYED", "EFFECT_PLAYED", "CHALLENGE_CALLED", "NO_CHALLENGE", "BLUFF_CAUGHT", "FALSE_ACCUSATION", "PENALTY_DISCARDED", "EFFECT_RESOLVED", "TARGET_SECURED", "VOTE_STARTED", "VOTE_RESOLVED", "LAST_CHANCE_STARTED", "TURN_SKIPPED", "ROUND_RESOLVED", "REVEAL_STARTED", "ROUND_CONTINUED"]),
+  at: z.number().int().nonnegative(), actorPlayerId: z.uuid().nullable(), targetPlayerId: z.uuid().nullable(), claim: NumberButtonCardKindSchema.nullable(), revealedCard: ButtonCardKindSchema.nullable(), movement: z.number().int().min(-3).max(3).nullable(),
 });
 export type PublicRoundEvent = z.infer<typeof PublicRoundEventSchema>;
 export const RoundRevealEntrySchema = z.strictObject({
@@ -164,7 +173,7 @@ export const ObservableGameEventSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("BUTTON_V2_OUTCOME"), actorPlayerId: z.uuid(), opponentPlayerId: z.uuid().nullable(),
     outcome: z.enum(["BLUFF_SUCCEEDED", "BLUFF_CAUGHT", "TRUTHFUL", "FALSELY_ACCUSED", "CORRECT_CHALLENGE", "FALSE_CHALLENGE", "CARD_RESOLVED"]),
-    actualCard: ButtonCardKindSchema, claimedCard: ButtonCardKindSchema, targeted: z.boolean(), at: z.number().int().nonnegative(),
+    actualCard: ButtonCardKindSchema, claimedCard: NumberButtonCardKindSchema.nullable(), targeted: z.boolean(), at: z.number().int().nonnegative(),
   }),
 ]);
 export type ObservableGameEvent = z.infer<typeof ObservableGameEventSchema>;

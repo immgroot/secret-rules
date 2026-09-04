@@ -11,6 +11,7 @@ build/
 coverage/
 *.tsbuildinfo
 .test-build/
+apps/web/src/generated/
 next-env.d.ts
 
 # Real environment files and credentials; commit placeholders only

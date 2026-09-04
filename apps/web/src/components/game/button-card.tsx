@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, CSSProperties } from "react";
-import { BUTTON_CARD_KINDS, BUTTON_CARD_LABELS, type ButtonCardKind } from "@secret-rules/shared";
+import { BUTTON_CARD_LABELS, NUMBER_BUTTON_CARDS, type ButtonCardKind, type EffectButtonCardKind, type NumberButtonCardKind } from "@secret-rules/shared";
 import { LogoMark } from "../brand/logo.tsx";
 import { GameIcon, type IconName } from "../icons/game-icon.tsx";
 
@@ -41,9 +41,9 @@ export function ButtonCardChoice({ kind, selected = false, purpose, className = 
   </button>;
 }
 
-export function ClaimCardPicker({ value, disabled, onSelect }: { value: ButtonCardKind | null; disabled: boolean; onSelect: (kind: ButtonCardKind) => void }) {
-  return <div className="claim-card-picker" role="group" aria-label="Choose the card identity you claim you played">
-    {BUTTON_CARD_KINDS.map((kind) => <ButtonCardChoice key={kind} kind={kind} purpose="claim" selected={value === kind} disabled={disabled} onClick={() => onSelect(kind)} />)}
+export function ClaimCardPicker({ value, disabled, onSelect }: { value: NumberButtonCardKind | null; disabled: boolean; onSelect: (kind: NumberButtonCardKind) => void }) {
+  return <div className="claim-card-picker" role="group" aria-label="Choose the Number Card you claim you played">
+    {NUMBER_BUTTON_CARDS.map((kind) => <ButtonCardChoice key={kind} kind={kind} purpose="claim" selected={value === kind} disabled={disabled} onClick={() => onSelect(kind)} />)}
   </div>;
 }
 
@@ -60,18 +60,20 @@ export type PlayedCardMotion = { arrivalProgress: number; revealProgress: number
 
 const clampProgress = (value: number) => Math.max(0, Math.min(1, value));
 
-export function PublicPlayedCard({ revealedKind, animationKey, origin, motion }: { revealedKind: ButtonCardKind | null; animationKey: string; origin?: { x: number; y: number }; motion?: PlayedCardMotion }) {
+export function PublicPlayedCard({ revealedKind, faceUpKind = null, animationKey, origin, motion, effectLanding = false }: { revealedKind: ButtonCardKind | null; faceUpKind?: EffectButtonCardKind | null; animationKey: string; origin?: { x: number; y: number }; motion?: PlayedCardMotion; effectLanding?: boolean }) {
   const arrival = clampProgress(motion?.arrivalProgress ?? 1);
   const ease = 1 - Math.pow(1 - arrival, 3);
   const style = {
     ...(origin ? { "--played-origin-x": `${origin.x}px`, "--played-origin-y": `${origin.y}px` } : {}),
     ...(motion ? { transform: `translate3d(${(origin?.x ?? 0) * (1 - ease)}px, ${(origin?.y ?? 0) * (1 - ease)}px, 0) rotate(${(1 - ease) * -8}deg) scale(${.72 + ease * .28})`, opacity: .2 + ease * .8 } : {}),
   } as CSSProperties;
-  const innerStyle = motion ? { transform: `rotateY(${clampProgress(motion.revealProgress) * 180}deg)` } : undefined;
-  return <div key={animationKey} className="played-card" data-revealed={Boolean(revealedKind)} data-scripted={Boolean(motion)} style={style}>
-    <span className="played-card__inner" style={innerStyle}>
+  const visibleKind = faceUpKind ?? revealedKind;
+  const innerStyle = motion ? { transform: `rotateY(${faceUpKind ? 180 : clampProgress(motion.revealProgress) * 180}deg)` } : undefined;
+  const label = faceUpKind ? `Face-up Effect card: ${BUTTON_CARD_LABELS[faceUpKind]}` : revealedKind ? `Revealed Number card: ${BUTTON_CARD_LABELS[revealedKind]}` : "Face-down SECRET RULES card. Real Number hidden.";
+  return <div className="played-card" role="img" aria-label={label} data-animation-key={animationKey} data-effect-landing={effectLanding ? animationKey : undefined} data-revealed={Boolean(visibleKind)} data-face-up={Boolean(faceUpKind)} data-scripted={Boolean(motion)} data-flight-arrival={effectLanding} style={style}>
+    <span className="played-card__inner" style={innerStyle} aria-hidden="true">
       <span className="played-card__face played-card__back"><ButtonCardBack /></span>
-      {revealedKind && <span className="played-card__face played-card__front"><ButtonCardArtwork kind={revealedKind} context="table" /></span>}
+      {visibleKind && <span className="played-card__face played-card__front"><ButtonCardArtwork kind={visibleKind} context="table" /></span>}
     </span>
   </div>;
 }

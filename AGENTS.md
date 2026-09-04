@@ -12,9 +12,11 @@ for 4–10 players, not a dashboard or SaaS application.
   systems while maintaining the server-authoritative hidden-card bluffing game.
   The current polish pass also owns match abandonment below two active players,
   client-only point-of-view seating, and accurate homepage/tutorial teaching.
-- Button V2 deals five private cards, accepts a public claimed identity, gives
-  eligible opponents one server-timed challenge window, resolves the real card,
-  owns penalties/scores/target voting and runs at most one Last Chance rotation.
+- Button V2 deals five private cards. Number Cards accept only a Number claim,
+  play face-down and receive one server-timed challenge window. Effect Cards
+  play face-up and resolve directly with one real target/value when required;
+  they never create claims or challenges. The server owns penalties, scores,
+  target voting and at most one Last Chance rotation.
 - Lobby Button settings are deck length, optional exact target, turn timer,
   challenge timer and match rounds. They are validated server-side and locked
   after gameplay starts. Timer authority never transfers to the client.
@@ -23,9 +25,12 @@ for 4–10 players, not a dashboard or SaaS application.
   this script as the future authoritative mini-game engine or network state.
 - The Button is the only authorized playable mini-game. Do not implement The
   Elevator, The Bomb, The Doors, The Safe, The Train, The Auction, The Bridge,
-  or any other mini-game. Do not add a database, accounts, payments,
-  matchmaking, a public room browser, voice, permanent bans, moderator roles,
-  achievements, persistent scoring/progression, or rematch/stay-together.
+  or any other mini-game. The approved account foundation uses Better Auth,
+  Prisma and PostgreSQL only for persistent identity, provider accounts,
+  sessions, verification, rate limits and profile fields. Do not persist room
+  gameplay or add payments, matchmaking, a public room browser, voice,
+  permanent bans, moderator roles, achievements, persistent scoring/progression,
+  purchases, subscriptions or rematch/stay-together.
 - Button V2 may expose server-calculated live challenge/target scores and final
   Secret results at reveal-safe phases. It must not add XP, coins, ranked
   ladders, battle passes, persistent progression, negative match totals, or
@@ -39,6 +44,9 @@ for 4–10 players, not a dashboard or SaaS application.
   host permission and password revision before committing or admitting a join.
 - Anonymous reconnect credentials are room-scoped bearer secrets, not accounts.
   Keep them out of public snapshots, URLs, logs, React render props, and HTML.
+- Account sessions and room reconnect credentials are separate authorities.
+  A verified account token may associate a private account ID with a room seat,
+  but it never grants host, player, turn or private-game-state authorization.
 - One live socket may act for a player. A credential-authorized replacement
   must revoke the previous socket before sending another room snapshot.
 - Planned architecture in `docs/` is not permission to implement it.
@@ -74,6 +82,9 @@ for 4–10 players, not a dashboard or SaaS application.
 - `apps/web` owns rendering and local presentation state. It sends player
   intentions, never authoritative state, scores, timers, random outcomes, or
   secret rule assignments.
+- `apps/web/src/auth` owns Better Auth configuration, PostgreSQL persistence,
+  email delivery and short-lived account identity tokens. Account cookies remain
+  HttpOnly; the browser must not persist account tokens in local storage.
 - `apps/server` owns server bootstrap, room state, stable session authorization,
   the rule catalog, server-only randomness, assignment history, relationship
   graphs, generation, recipient-specific projections, The Button counter,
@@ -93,6 +104,8 @@ for 4–10 players, not a dashboard or SaaS application.
 - Reconnects must reauthorize the player and produce a fresh recipient-specific
   snapshot. A room code, player ID, or socket ID is not proof of identity.
 - Never log secret rules, resume credentials, or raw private payloads.
+- Never expose account email, provider tokens, password digests, session tokens,
+  verification/reset tokens or the server-private account user ID in room state.
 
 ## Implementation discipline
 
@@ -104,6 +117,8 @@ for 4–10 players, not a dashboard or SaaS application.
   are private and must remain non-publishable unless explicitly authorized.
 - Keep real environment files out of Git. Anything prefixed `NEXT_PUBLIC_` is
   public and must never contain a secret.
+- Apply committed Prisma migrations with `prisma migrate deploy`; never reset or
+  use schema-push against production data.
 - Prefer existing tools and Node built-ins. No new dependency, infrastructure,
   networking framework, or service without a concrete need in the approved phase.
 - Use strict TypeScript; do not hide errors with `any`, blanket suppressions, or
@@ -119,6 +134,7 @@ for 4–10 players, not a dashboard or SaaS application.
 
 - `docs/ARCHITECTURE.md`: boundaries, deployment shape, and shared mini-game plan.
 - `docs/MULTIPLAYER.md`: authority, privacy, validation, synchronization, reconnects.
+- `docs/AUTHENTICATION.md`: Better Auth boundary, account flows, security and deployment.
 - `docs/GAME_DESIGN.md`: product concept and open design decisions.
 - `docs/DESIGN_SYSTEM.md`: visual identity, tokens, presentation contracts, accessibility.
 - `docs/PHASE_0_6.md`: isolated homepage interactions, sound/preferences, verification.

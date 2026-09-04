@@ -3,8 +3,8 @@ import { BUTTON_CARD_KINDS } from "@secret-rules/shared";
 import { deterministicUuid, seededRandom } from "../../rules/rng.ts";
 
 export const STANDARD_BUTTON_DECK_COUNTS: Readonly<Record<ButtonCardKind, number>> = Object.freeze({
-  PLUS_ONE: 11, PLUS_TWO: 9, MINUS_ONE: 7, PLUS_THREE: 5, MINUS_TWO: 4,
-  SKIP: 3, REVERSE: 3, STEAL: 2, INSPECT: 2, SHIELD: 2, WILD: 2,
+  PLUS_ONE: 12, PLUS_TWO: 10, PLUS_THREE: 7, MINUS_ONE: 6, MINUS_TWO: 5,
+  INSPECT: 2, STEAL: 2, SKIP: 2, REVERSE: 2, SHIELD: 1, WILD: 1,
 });
 
 export function scaledButtonDeckCounts(size: number): Readonly<Record<ButtonCardKind, number>> {

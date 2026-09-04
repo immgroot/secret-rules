@@ -23,6 +23,11 @@ export function projectVisualSeats(players: readonly PublicPlayer[], viewerPlaye
   const playerPov = localIndex >= 0;
   const ordered = playerPov ? [...logical.slice(localIndex), ...logical.slice(0, localIndex)] : logical;
   const step = ordered.length ? 360 / ordered.length : 0;
+  const crowdedPerimeterAngle = (visualIndex: number) => {
+    if (visualIndex === 0) return 180;
+    const perimeterCount = ordered.length - 1;
+    return 98 - ((visualIndex - 1) * 196) / (perimeterCount - 1);
+  };
   return {
     orientation: playerPov ? "player" : "spectator",
     logicalPlayerIds: logical.map((player) => player.playerId),
@@ -31,7 +36,7 @@ export function projectVisualSeats(players: readonly PublicPlayer[], viewerPlaye
       return {
         player,
         visualIndex,
-        angle: normalizeAngle(playerPov ? 180 - step * visualIndex : step * visualIndex),
+        angle: normalizeAngle(playerPov ? ordered.length >= 9 ? crowdedPerimeterAngle(visualIndex) : 180 - step * visualIndex : step * visualIndex),
         local,
         position: local ? "front" : "perimeter",
       };

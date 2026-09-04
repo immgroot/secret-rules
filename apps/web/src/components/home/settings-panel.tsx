@@ -20,8 +20,8 @@ export function SettingsPanel({ onClose, connectionStatus = "preview" }: { onClo
     </fieldset>
     <fieldset className="preference-group">
       <legend>MOTION</legend>
-      <div className="motion-options">{(["full", "reduced"] as const).map((motion) => <label key={motion}><input type="radio" name="motion" value={motion} checked={preferences.motion === motion} onChange={() => update({ motion })} /><span>{motion.toUpperCase()}</span></label>)}</div>
-      <p className="settings-note">{deviceReduced ? "Your device requests reduced motion, so movement stays reduced even with Full selected." : "Reduced keeps the story and controls, without animated movement."}</p>
+      <div className="motion-options">{(["auto", "full", "reduced"] as const).map((motion) => <label key={motion}><input type="radio" name="motion" value={motion} checked={preferences.motion === motion} onChange={() => update({ motion })} /><span>{motion.toUpperCase()}</span></label>)}</div>
+      <p className="settings-note">{preferences.motion === "full" ? "Full always plays physical card movement." : preferences.motion === "reduced" ? "Reduced keeps every result readable without large spatial movement." : deviceReduced ? "Auto is following your device’s reduced-motion request." : "Auto follows your device motion preference."}</p>
     </fieldset>
     <div className="sound-test"><GameButton variant="secondary" size="small" disabled={!preferences.masterEnabled || preferences.masterVolume === 0} onClick={() => sound.play("buttonPress")}><GameIcon name="audio" size={16} /> TEST SOUND</GameButton><span>{preferences.masterEnabled && preferences.masterVolume > 0 ? "Sound enabled" : "Master sound muted"}</span></div>
     <p className="settings-note" role="status">{persistence === "unavailable" ? "Browser storage is unavailable. Changes work for this visit only." : persistence === "loading" ? "Loading your preferences…" : "Preferences save in this browser. No account needed."}</p>

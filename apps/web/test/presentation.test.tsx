@@ -11,10 +11,13 @@ import { HomePage } from "../src/components/home/homepage.tsx";
 import { AppProviders } from "../src/app/providers.tsx";
 import { projectVisualSeats } from "../src/components/game/seat-projection.ts";
 import { tutorialSteps } from "../src/components/home/how-to-play.tsx";
-import { BUTTON_CARD_KINDS, BUTTON_CARD_LABELS, PrivatePlayerRoundStateSchema } from "@secret-rules/shared";
+import { EFFECT_BUTTON_CARDS, NUMBER_BUTTON_CARDS, BUTTON_CARD_LABELS, CHAOS_DESCRIPTIONS, PrivatePlayerRoundStateSchema } from "@secret-rules/shared";
 import { ButtonCardChoice, ClaimCardPicker, PublicPlayedCard } from "../src/components/game/button-card.tsx";
 import { PrivateEffectResult } from "../src/components/game/game-shell.tsx";
-import type { PublicPlayer } from "@secret-rules/shared";
+import { PublicBoardView } from "../src/components/game/public-board.tsx";
+import { GameTable } from "../src/components/game/game-table.tsx";
+import { EffectPresentationLayer, type EffectPlayback } from "../src/components/game/effect-presentation.tsx";
+import type { EffectButtonCardKind, PublicButtonEffect, PublicPlayer, PublicRoundState } from "@secret-rules/shared";
 
 test("timer formats supplied server timestamps without owning a clock or resolving a round", () => {
   assert.equal(formatRemainingTime(90_000, 30_000), "01:00");
@@ -85,7 +88,7 @@ test("homepage clearly presents online Button V2 play, full rules entry, and an 
   assert.match(html, /The Button V2 interactive gameplay preview/);
   assert.match(html, /PLAY THE EXAMPLE/);
   assert.match(html, /SAME GAME\. DIFFERENT RULES\./);
-  for (const rule of ["GET DEALT", "PLAY &amp; CLAIM", "TRUST OR CHALLENGE", "MOVE THE TABLE", "REVEAL &amp; SCORE"]) assert.match(html, new RegExp(rule));
+  for (const rule of ["GET DEALT", "PLAY OR ACT", "TRUST OR CHALLENGE", "MOVE THE TABLE", "REVEAL &amp; SCORE"]) assert.match(html, new RegExp(rule));
   assert.match(html, /PLAY PREVIEW/);
   assert.match(html, /GET 4–10 FRIENDS\. SHARE THE CODE\. TRUST NOBODY/);
   assert.match(html, />CREATE ROOM</);
@@ -117,6 +120,96 @@ function examplePlayers(count: number): PublicPlayer[] {
     joinedAt: index,
   }));
 }
+
+function publicRound(players: readonly PublicPlayer[], options: {
+  actorId?: string; passedPlayerIds?: string[]; effect?: PublicButtonEffect | null;
+} = {}): PublicRoundState {
+  const actorId = options.actorId ?? players[0]!.playerId;
+  const challenge = options.effect ? null : { challengerPlayerId: null, outcome: null, revealedCard: null, resolvedAt: null, passedPlayerIds: options.passedPlayerIds ?? [] };
+  return {
+    roundId: "10000000-0000-4000-8000-000000000001", roundNumber: 1, totalRounds: 3, miniGameId: "the-button-v2", buttonMode: "V2",
+    phase: options.effect ? "turn_action" : "challenge", serverNow: 1_000, publicObjective: "REACH EXACTLY 20.",
+    publicTimer: options.effect ? { kind: "turn", deadlineAt: 11_000, durationMs: 10_000, serverNow: 1_000 } : { kind: "challenge", deadlineAt: 11_000, durationMs: 10_000, serverNow: 1_000 },
+    countdownEndsAt: null,
+    publicGameState: {
+      kind: "the-button-v2", counter: options.effect?.counterAfter ?? 4, target: 20, targetSecured: false, securedByPlayerId: null,
+      currentPlayerId: options.effect ? players[1]!.playerId : actorId, direction: options.effect?.type === "reverse" ? "counter_clockwise" : "clockwise",
+      deckRemaining: 28, discardCount: 1, handCounts: players.map((player) => ({ playerId: player.playerId, count: 5 })),
+      shieldedPlayerIds: options.effect?.type === "shield" ? [actorId] : [], skippedPlayerIds: options.effect?.type === "skip" && options.effect.targetPlayerId ? [options.effect.targetPlayerId] : [],
+      currentClaim: options.effect ? null : { actorPlayerId: actorId, claim: "PLUS_TWO", claimedAt: 1_000 }, challenge,
+      lastEffect: options.effect ?? null, targetVote: null, lastChanceActive: false, lastChanceTurnsRemaining: 0, basicActionAvailable: false,
+    },
+    publicPlayerStatuses: players.map((player) => ({ playerId: player.playerId, connected: player.connected, acknowledged: true })),
+    publicEvents: [], reveal: null, scores: players.map((player, index) => ({ rank: index + 1, playerId: player.playerId, score: 0 })), roundScore: null, matchResult: null,
+  };
+}
+
+function effectState(players: readonly PublicPlayer[], card: EffectButtonCardKind, type: PublicButtonEffect["type"], movement: number, targetPlayerId: string | null = null): PublicButtonEffect {
+  return { effectId: randomUUID(), card, type, actorPlayerId: players[0]!.playerId, targetPlayerId, movement, counterBefore: 4, counterAfter: Math.max(0, 4 + movement), at: 1_000 };
+}
+
+test("private controls keep one real front seat and shield ownership follows each stable player ID", () => {
+  const names = ["GROOT", "KIV", "NIDA", "NOOR"];
+  const players = examplePlayers(4).map((player, index) => ({ ...player, displayName: names[index]! }));
+  for (const viewer of players) for (const protectedPlayer of players) {
+    const round = publicRound(players);
+    round.publicGameState.shieldedPlayerIds = [protectedPlayer.playerId];
+    const html = renderToStaticMarkup(<GameTable players={players} playerId={viewer.playerId} round={round} acknowledgedPlayerIds={new Set()} choosePlayer={() => {}} eventFeed={null} privateControls={<div>PRIVATE HAND</div>} privateSecondaryAction={<button>VIEW SECRET</button>}><div>PUBLIC TABLE</div></GameTable>);
+    const seats = html.match(/<button class="player-seat"[^>]*>/g) ?? [];
+    assert.equal(seats.length, players.length);
+    for (const player of players) assert.equal(seats.filter((seat) => seat.includes(`data-player-id="${player.playerId}"`)).length, 1);
+    const shields = seats.filter((seat) => seat.includes('data-shielded="true"'));
+    assert.equal(shields.length, 1);
+    assert.ok(shields[0]!.includes(`data-player-id="${protectedPlayer.playerId}"`));
+    const dock = html.slice(html.indexOf('<section class="game-private-region"'));
+    assert.ok(dock.includes(`data-player-id="${viewer.playerId}"`));
+    assert.match(dock, /data-seat-position="front"/);
+    assert.match(dock, /VIEW SECRET/);
+    assert.match(dock, /id="private-actions"/);
+  }
+});
+
+test("Last Chance reconnect renders only authoritative compact status and never replays the large celebration", () => {
+  const players = examplePlayers(4);
+  const base = publicRound(players);
+  const lastChance: PublicRoundState = {
+    ...base,
+    phase: "last_chance",
+    publicTimer: { kind: "turn", deadlineAt: 11_000, durationMs: 10_000, serverNow: 1_000 },
+    publicGameState: {
+      ...base.publicGameState,
+      counter: 30,
+      target: 30,
+      targetSecured: true,
+      securedByPlayerId: players[0]!.playerId,
+      currentPlayerId: players[1]!.playerId,
+      currentClaim: null,
+      challenge: null,
+      lastChanceActive: true,
+      lastChanceTurnsRemaining: 3,
+    },
+  };
+  const html = renderToStaticMarkup(<PublicBoardView round={lastChance} players={players} selfId={players[0]!.playerId} spectator={false} disabled={false} now={1_000} tableNotice={null} />);
+  assert.match(html, /✓ TARGET SECURED/);
+  assert.match(html, /30 \/ 30 · 3 TURNS LEFT/);
+  assert.doesNotMatch(html, /target-secured--celebration/);
+  assert.doesNotMatch(html, /last-chance-intro/);
+
+  // Last Chance uses ordinary action/challenge phases after its short intro.
+  for (const phase of ["turn_action", "challenge", "challenge_reveal", "penalty_discard"] as const) {
+    const duringTurn = renderToStaticMarkup(<PublicBoardView round={{ ...lastChance, phase }} players={players} selfId={players[0]!.playerId} spectator={false} disabled={false} now={1_000} tableNotice={null} />);
+    assert.match(duringTurn, /30 \/ 30 · 3 TURNS LEFT/);
+    assert.doesNotMatch(duringTurn, /target-secured--celebration|last-chance-intro/);
+  }
+  const completed = renderToStaticMarkup(<PublicBoardView round={{ ...lastChance, phase: "round_reveal" }} players={players} selfId={players[0]!.playerId} spectator={false} disabled={false} now={1_000} tableNotice={null} />);
+  assert.doesNotMatch(completed, /class="target-secured-compact"/);
+
+  const source = readFileSync(new URL("../../src/components/game/public-board.tsx", import.meta.url), "utf8");
+  assert.match(source, /!previousTargetSecured\.current && game\.targetSecured && round\.phase === "target_vote"/);
+  assert.match(source, /previousPhase\.current === "target_vote" && round\.phase === "last_chance"/);
+  assert.match(source, /presentation === "targetHitCelebration"\) hideTimeout = setTimeout\(\(\) => setPresentation\("hidden"\), 1500\)/);
+  assert.match(source, /presentation === "lastChanceIntro"\) hideTimeout = setTimeout\(\(\) => setPresentation\("hidden"\), 1100\)/);
+});
 
 test("POV seat projection places every player at the front without mutating authoritative identity or order", () => {
   for (let count = 4; count <= 10; count++) {
@@ -152,6 +245,16 @@ test("spectators keep a neutral projection and stable player POV survives socket
   assert.deepEqual(afterReconnect.seats.map((seat) => seat.player.playerId), beforeReconnect.seats.map((seat) => seat.player.playerId));
 });
 
+test("nine- and ten-player POV layouts keep every opponent out of the private hand edge", () => {
+  for (const count of [9, 10]) {
+    const projection = projectVisualSeats(examplePlayers(count), examplePlayers(count)[0]!.playerId);
+    const opponentAngles = projection.seats.filter((seat) => !seat.local).map((seat) => seat.angle);
+    assert.ok(opponentAngles.every((angle) => angle >= -98 && angle <= 98));
+    assert.equal(Math.max(...opponentAngles), 98);
+    assert.equal(Math.min(...opponentAngles), -98);
+  }
+});
+
 test("POV rotation cannot change authoritative turns, direction, skips, challenges, or targeted player IDs", () => {
   const players = examplePlayers(4);
   const facts = Object.freeze({
@@ -175,8 +278,8 @@ test("POV rotation cannot change authoritative turns, direction, skips, challeng
 
 test("the guided tutorial covers the complete Button V2 round in ten ordered steps", () => {
   assert.deepEqual(tutorialSteps.map((step) => step.title), [
-    "GET YOUR CARDS", "GET YOUR SECRET", "PLAY A REAL CARD", "MAKE YOUR CLAIM", "TRUST OR CALL BLUFF",
-    "CHALLENGE RESULT", "USE THE CARDS", "HIT THE TARGET", "END OR CONTINUE", "REVEAL YOUR SECRET",
+    "GET YOUR CARDS", "GET YOUR SECRET", "PLAY A NUMBER CARD", "CLAIM A NUMBER", "TRUST OR CALL BLUFF",
+    "CHALLENGE RESULT", "PLAY EFFECTS DIRECTLY", "HIT THE TARGET", "END OR CONTINUE", "REVEAL YOUR SECRET",
   ]);
   const source = readFileSync(new URL("../../src/components/home/how-to-play.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /useMultiplayer|RoomOwner|\.playCard\(|\.callBluff\(/);
@@ -231,11 +334,12 @@ test("homepage example Secrets use one 5:7 body and reusable responsive copy var
   }
 });
 
-test("the claim-card picker exposes every valid claim identity as a keyboard button", () => {
+test("the claim-card picker exposes only the five Number identities as keyboard buttons", () => {
   const html = renderToStaticMarkup(<ClaimCardPicker value="PLUS_TWO" disabled={false} onSelect={() => {}} />);
-  assert.equal((html.match(/class="button-card button-card--claim/g) ?? []).length, BUTTON_CARD_KINDS.length);
-  for (const kind of BUTTON_CARD_KINDS) assert.match(html, new RegExp(`Public claim: ${BUTTON_CARD_LABELS[kind].replace("+", "\\+")}`));
-  assert.equal((html.match(/type="button"/g) ?? []).length, BUTTON_CARD_KINDS.length);
+  assert.equal((html.match(/class="button-card button-card--claim/g) ?? []).length, NUMBER_BUTTON_CARDS.length);
+  for (const kind of NUMBER_BUTTON_CARDS) assert.match(html, new RegExp(`Public claim: ${BUTTON_CARD_LABELS[kind].replace("+", "\\+")}`));
+  for (const kind of EFFECT_BUTTON_CARDS) assert.doesNotMatch(html, new RegExp(`Public claim: ${BUTTON_CARD_LABELS[kind]}`));
+  assert.equal((html.match(/type="button"/g) ?? []).length, NUMBER_BUTTON_CARDS.length);
   assert.match(html, /aria-pressed="true"/);
 });
 
@@ -280,17 +384,91 @@ test("the authorized INSPECT result renders the actual Button card and private-o
   assert.match(html, />GOT IT</);
 });
 
-test("the public played card conceals identity until a reveal-safe card kind is supplied", () => {
+test("the public played card conceals Number identity but renders direct Effects face-up", () => {
   const concealed = renderToStaticMarkup(<PublicPlayedCard animationKey="hidden" revealedKind={null} />);
   assert.match(concealed, /Face-down SECRET RULES card/);
   for (const label of Object.values(BUTTON_CARD_LABELS)) assert.equal(concealed.includes(`>${label}<`), false);
   const revealed = renderToStaticMarkup(<PublicPlayedCard animationKey="revealed" revealedKind="MINUS_TWO" />);
   assert.match(revealed, />-2</);
   assert.match(revealed, /data-revealed="true"/);
+  const effect = renderToStaticMarkup(<PublicPlayedCard animationKey="effect" revealedKind={null} faceUpKind="INSPECT" />);
+  assert.match(effect, />INSPECT</);
+  assert.match(effect, /data-face-up="true"/);
+});
+
+test("eligible opponents receive authoritative CALL BLUFF and PASS controls while actors and spectators do not", () => {
+  const players = examplePlayers(4);
+  const round = publicRound(players);
+  const eligible = renderToStaticMarkup(<PublicBoardView round={round} players={players} selfId={players[1]!.playerId} spectator={false} disabled={false} now={1_000} tableNotice={null} onCallBluff={() => {}} onPassChallenge={() => {}} />);
+  assert.match(eligible, />CALL BLUFF</);
+  assert.match(eligible, />PASS</);
+  assert.match(eligible, /PLAYER 2<\/b> · THINKING/);
+  const accepted = renderToStaticMarkup(<PublicBoardView round={publicRound(players, { passedPlayerIds: [players[1]!.playerId] })} players={players} selfId={players[1]!.playerId} spectator={false} disabled={false} now={1_000} tableNotice={null} onCallBluff={() => {}} onPassChallenge={() => {}} />);
+  assert.match(accepted, />YOU PASSED</);
+  assert.match(accepted, /PLAYER 2<\/b> · PASSED/);
+  const actor = renderToStaticMarkup(<PublicBoardView round={round} players={players} selfId={players[0]!.playerId} spectator={false} disabled={false} now={1_000} tableNotice={null} onCallBluff={() => {}} onPassChallenge={() => {}} />);
+  assert.doesNotMatch(actor, />CALL BLUFF</);
+  assert.doesNotMatch(actor, />PASS</);
+  const spectator = renderToStaticMarkup(<PublicBoardView round={round} players={players} selfId={null} spectator disabled={false} now={1_000} tableNotice={null} onCallBluff={() => {}} onPassChallenge={() => {}} />);
+  assert.doesNotMatch(spectator, />CALL BLUFF</);
+  assert.doesNotMatch(spectator, /class="[^"]*pass-challenge/);
+});
+
+test("Effect presentation names public outcomes without leaking INSPECT or STEAL card identities", () => {
+  const players = examplePlayers(4);
+  const targetId = players[1]!.playerId;
+  const inspect = renderToStaticMarkup(<PublicBoardView round={publicRound(players, { effect: effectState(players, "INSPECT", "inspect", 1, targetId) })} players={players} selfId={players[2]!.playerId} spectator={false} disabled={false} now={1_000} tableNotice={null} />);
+  assert.match(inspect, /data-face-up="true"/);
+  assert.match(inspect, /PLAYER 1<\/b> INSPECTED <strong>PLAYER 2/);
+  assert.match(inspect, /RESULT SENT PRIVATELY/);
+  assert.doesNotMatch(inspect, /actual card|PLUS_TWO/iu);
+  const steal = renderToStaticMarkup(<PublicBoardView round={publicRound(players, { effect: effectState(players, "STEAL", "steal", 1, targetId) })} players={players} selfId={players[2]!.playerId} spectator={false} disabled={false} now={1_000} tableNotice={null} />);
+  assert.match(steal, /PLAYER 1<\/b> STOLE A CARD <strong>FROM PLAYER 2/);
+  assert.match(steal, /CARD IDENTITY STAYS PRIVATE/);
+  assert.doesNotMatch(steal, /actual card/iu);
+  const effect = effectState(players, "STEAL", "steal", 1, targetId) as EffectPlayback["effect"];
+  const transfer = renderToStaticMarkup(<EffectPresentationLayer playback={{ effect, origin: null, motion: "full", phase: "activate" }} selfId={players[0]!.playerId} onAdvance={() => {}} />);
+  assert.match(transfer, /effect-playback-layer/);
+  assert.match(transfer, /data-effect-type="steal"/);
+  assert.match(transfer, /data-phase="activate"/);
+  assert.doesNotMatch(transfer, /PLUS_ONE|PLUS_TWO|PLUS_THREE|MINUS_ONE|MINUS_TWO/);
+});
+
+test("all six Effects mount the shared face-up playback layer from an authoritative effect snapshot", () => {
+  const players = examplePlayers(4);
+  const cases = ["INSPECT", "STEAL", "SKIP", "REVERSE", "SHIELD", "WILD"] as const;
+  for (const card of cases) {
+    const type = card === "INSPECT" ? "inspect" : card === "STEAL" ? "steal" : card === "SKIP" ? "skip" : card === "REVERSE" ? "reverse" : card === "SHIELD" ? "shield" : "movement";
+    const target = ["INSPECT", "STEAL", "SKIP"].includes(card) ? players[1]!.playerId : card === "SHIELD" ? players[0]!.playerId : null;
+    const effect = effectState(players, card, type, card === "WILD" ? 2 : 1, target) as EffectPlayback["effect"];
+    const html = renderToStaticMarkup(<EffectPresentationLayer playback={{ effect, origin: null, motion: "full", phase: "pickup" }} selfId={players[0]!.playerId} onAdvance={() => {}} />);
+    assert.match(html, new RegExp(`data-effect-kind="${card}"`));
+    assert.match(html, /data-phase="pickup"/);
+    assert.match(html, /data-motion="full"/);
+    const reduced = renderToStaticMarkup(<EffectPresentationLayer playback={{ effect, origin: null, motion: "reduced", phase: "activate" }} selfId={players[0]!.playerId} onAdvance={() => {}} />);
+    assert.match(reduced, /data-motion="reduced"/);
+    assert.match(reduced, /effect-reduced-confirmation/);
+    assert.match(reduced, new RegExp(`${BUTTON_CARD_LABELS[card].replace("+", "\\+")} · FACE-UP`));
+    assert.doesNotMatch(reduced, /effect-card-clone|effect-steal-transfer/);
+  }
+});
+
+test("SKIP, REVERSE, SHIELD, block, and WILD render distinct authoritative feedback", () => {
+  const players = examplePlayers(4);
+  const targetId = players[1]!.playerId;
+  const render = (effect: PublicButtonEffect) => renderToStaticMarkup(<PublicBoardView round={publicRound(players, { effect })} players={players} selfId={players[2]!.playerId} spectator={false} disabled={false} now={1_000} tableNotice={null} />);
+  assert.match(render(effectState(players, "SKIP", "skip", 1, targetId)), /PLAYER 2 WILL SKIP THEIR NEXT TURN/);
+  assert.match(render(effectState(players, "REVERSE", "reverse", 1)), /DIRECTION REVERSED/);
+  assert.match(render(effectState(players, "SHIELD", "shield", 1, players[0]!.playerId)), /SHIELD ARMED/);
+  assert.match(render(effectState(players, "STEAL", "shield_blocked", 1, targetId)), /SHIELD BLOCKED IT/);
+  const wild = render(effectState(players, "WILD", "movement", 2));
+  assert.match(wild, /wild-effect-value/);
+  assert.match(wild, /<span>WILD<\/span><strong>\+2<\/strong>/);
+  assert.match(wild, /<small>4 → 6<\/small>/);
 });
 
 test("Button V2 polish keeps turn, claim, target, hover, privacy, and reduced-motion contracts explicit", () => {
-  const source = ["game-shell.tsx", "public-board.tsx", "private-effect-result.tsx", "play-presentation.tsx"]
+  const source = ["game-shell.tsx", "public-board.tsx", "private-effect-result.tsx", "play-presentation.tsx", "effect-presentation.tsx"]
     .map((file) => readFileSync(new URL(`../../src/components/game/${file}`, import.meta.url), "utf8"))
     .join("\n");
   const css = readFileSync(new URL("../../src/styles/game.css", import.meta.url), "utf8");
@@ -301,11 +479,13 @@ test("Button V2 polish keeps turn, claim, target, hover, privacy, and reduced-mo
   assert.match(source, /THE REAL CARD STAYS HIDDEN/);
   assert.match(source, /data-player-id=\{player\.playerId\}/);
   assert.match(source, /revealedKind=\{challenge\?\.revealedCard \?\? null\}/);
-  assert.match(source, /cardId: selected\.cardId,\s+claim/);
-  assert.match(source, /realTargetPlayerId: realTargetId/);
-  assert.match(source, /targetPlayerId: claimTargetId/);
-  assert.match(source, /STAGE A · PRIVATE EFFECT TARGET/);
-  assert.match(source, /PUBLIC CLAIM TARGET/);
+  assert.match(source, /playType: "number", cardId: selected\.cardId, claim/);
+  assert.match(source, /playType: "effect", cardId: selected\.cardId/);
+  assert.match(source, /targetPlayerId: effectTargetId/);
+  assert.doesNotMatch(source, /realTargetPlayerId|claimTargetPlayerId|claimTargetId/);
+  assert.match(source, /DIRECT ACTION · FACE-UP/);
+  assert.match(source, /This target becomes public when the Effect is played/);
+  assert.match(source, /WILD gets no extra \+1/);
   assert.match(source, /INSPECT RESULT/);
   assert.match(source, /CARD STOLEN/);
   assert.match(source, /PRIVATE · ONLY YOU CAN SEE THIS/);
@@ -317,7 +497,31 @@ test("Button V2 polish keeps turn, claim, target, hover, privacy, and reduced-mo
   assert.doesNotMatch(stableCallBluffRule, /translate[XY]?\(/);
   const globals = readFileSync(new URL("../../src/app/globals.css", import.meta.url), "utf8");
   assert.match(css, /Button V2 presentation only/);
+  assert.match(css, /effect-playback-layer/);
+  assert.match(css, /effect-card-pickup 90ms/);
+  assert.match(css, /effect-card-travel 440ms/);
+  assert.match(css, /effect-steal-transfer 620ms/);
+  assert.match(css, /player-seat__effect-cue/);
+  assert.match(css, /effect-target-focus/);
+  assert.match(css, /private-card-forward/);
+  assert.match(css, /data-reduce-motion="true"/);
   assert.match(globals, /data-reduce-motion/);
+  assert.doesNotMatch(globals, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(source, /useEffectPresentationQueue/);
+  assert.match(source, /onAnimationEnd=\{finishPhase\}/);
+  assert.doesNotMatch(source, /effectPresentationTimer/);
+});
+
+test("Secret Intensity copy is explicit about difficulty without changing mechanics", () => {
+  assert.deepEqual(CHAOS_DESCRIPTIONS, {
+    chill: "Easier secrets. Good for learning.",
+    normal: "Balanced secrets and player interaction.",
+    chaos: "Harder, riskier and more conflicting secrets.",
+  });
+  const settings = readFileSync(new URL("../../src/components/lobby/room-settings.tsx", import.meta.url), "utf8");
+  assert.match(settings, />SECRET INTENSITY<select/);
+  assert.match(settings, /Secret Intensity changes private objective difficulty, risk, conflicts, and interaction/);
+  assert.match(settings, /It does not change the deck, Effect strength, timers, or scoring/);
 });
 
 test("brand metadata wires the complete local lime-document icon family at valid PNG sizes", () => {
